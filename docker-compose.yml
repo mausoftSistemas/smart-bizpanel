@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://bizventas:bizventas123@db:5432/bizventas
+      JWT_SECRET: cambiar-en-produccion-usar-algo-largo-y-random
+      JWT_EXPIRES_IN: 30d
+      PORT: 3000
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bizventas
+      POSTGRES_PASSWORD: bizventas123
+      POSTGRES_DB: bizventas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bizventas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,109 @@
+{
+  "producto": {
+    "endpoint": "/Items",
+    "method": "GET",
+    "itemsPath": "value",
+    "mappings": {
+      "erpId": "ItemCode",
+      "codigo": "ItemCode",
+      "nombre": "ItemName",
+      "stock": "QuantityOnStock",
+      "precio": "Price",
+      "descripcion": "ItemName",
+      "unidad": "SalesUnit",
+      "categoria": "ItemsGroupCode"
+    }
+  },
+  "cliente": {
+    "endpoint": "/BusinessPartners",
+    "method": "GET",
+    "itemsPath": "value",
+    "mappings": {
+      "erpId": "CardCode",
+      "codigo": "CardCode",
+      "razonSocial": "CardName",
+      "cuit": "FederalTaxID",
+      "telefono": "Phone1",
+      "email": "EmailAddress",
+      "direccion": "MailAddress",
+      "listaPrecio": "PriceListNum"
+    }
+  },
+  "precio": {
+    "endpoint": "/SpecialPrices",
+    "method": "GET",
+    "itemsPath": "value",
+    "mappings": {
+      "productoErpId": "ItemCode",
+      "clienteErpId": "CardCode",
+      "precio": "Price",
+      "moneda": "Currency",
+      "listaPrecioId": "PriceListNum"
+    }
+  },
+  "stock": {
+    "endpoint": "/Items",
+    "method": "GET",
+    "itemsPath": "value",
+    "mappings": {
+      "productoErpId": "ItemCode",
+      "cantidad": "QuantityOnStock",
+      "deposito": "DefaultWarehouse"
+    }
+  },
+  "cuentaCorriente": {
+    "endpoint": "/JournalEntries",
+    "method": "GET",
+    "itemsPath": "value",
+    "mappings": {
+      "erpId": "JdtNum",
+      "clienteErpId": "ShortName",
+      "tipoMovimiento": "TransactionType",
+      "numero": "Number",
+      "fecha": "ReferenceDate",
+      "fechaVencimiento": "DueDate",
+      "debe": "Debit",
+      "haber": "Credit",
+      "saldo": "FCDebit"
+    }
+  },
+  "pedido": {
+    "endpoint": "/Orders",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CardCode",
+      "observacion": "Comments"
+    },
+    "itemsMappings": {
+      "productoErpId": "ItemCode",
+      "cantidad": "Quantity",
+      "precio": "UnitPrice",
+      "descuento": "DiscountPercent"
+    }
+  },
+  "cobranza": {
+    "endpoint": "/IncomingPayments",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CardCode",
+      "monto": "CashSum",
+      "medioPago": "PaymentType",
+      "referencia": "Remarks"
+    }
+  },
+  "devolucion": {
+    "endpoint": "/Returns",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CardCode",
+      "observacion": "Comments",
+      "facturaNumero": "NumAtCard"
+    },
+    "itemsMappings": {
+      "productoErpId": "ItemCode",
+      "cantidad": "Quantity",
+      "precio": "UnitPrice",
+      "motivo": "FreeText"
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "producto": {
+    "endpoint": "/api/articulos",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "erpId": "id",
+      "codigo": "cod_articulo",
+      "nombre": "descripcion",
+      "stock": "stock_actual",
+      "precio": "precio_venta",
+      "unidad": "unidad_medida",
+      "categoria": "rubro"
+    }
+  },
+  "cliente": {
+    "endpoint": "/api/clientes",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "erpId": "id",
+      "codigo": "cod_cliente",
+      "razonSocial": "razon_social",
+      "cuit": "cuit",
+      "direccion": "domicilio",
+      "telefono": "telefono",
+      "email": "email",
+      "listaPrecio": "lista_precio"
+    }
+  },
+  "precio": {
+    "endpoint": "/api/precios",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "productoErpId": "cod_articulo",
+      "clienteErpId": "cod_cliente",
+      "precio": "precio",
+      "moneda": "moneda",
+      "listaPrecioId": "lista_precio"
+    }
+  },
+  "stock": {
+    "endpoint": "/api/stock",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "productoErpId": "cod_articulo",
+      "cantidad": "stock_actual",
+      "deposito": "deposito"
+    }
+  },
+  "cuentaCorriente": {
+    "endpoint": "/api/cuenta-corriente",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "erpId": "id",
+      "clienteErpId": "cod_cliente",
+      "tipoMovimiento": "tipo_comprobante",
+      "numero": "numero",
+      "fecha": "fecha",
+      "fechaVencimiento": "fecha_vencimiento",
+      "debe": "debe",
+      "haber": "haber",
+      "saldo": "saldo"
+    }
+  },
+  "pedido": {
+    "endpoint": "/api/pedidos",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "cod_cliente",
+      "observacion": "observaciones"
+    },
+    "itemsMappings": {
+      "productoErpId": "cod_articulo",
+      "cantidad": "cantidad",
+      "precio": "precio",
+      "descuento": "descuento"
+    }
+  },
+  "cobranza": {
+    "endpoint": "/api/cobranzas",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "cod_cliente",
+      "monto": "importe",
+      "medioPago": "medio_pago",
+      "referencia": "referencia"
+    }
+  },
+  "devolucion": {
+    "endpoint": "/api/devoluciones",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "cod_cliente",
+      "observacion": "observaciones",
+      "facturaNumero": "factura_numero"
+    },
+    "itemsMappings": {
+      "productoErpId": "cod_articulo",
+      "cantidad": "cantidad",
+      "precio": "precio",
+      "motivo": "motivo"
+    }
+  }
+}

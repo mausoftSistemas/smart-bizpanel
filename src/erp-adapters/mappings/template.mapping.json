@@ -1,0 +1,112 @@
+{
+  "_comentario": "Template de mapping para ERPs genéricos. Copiar este archivo y reemplazar los valores CAMPO_ERP y ENDPOINT_ERP con los campos y endpoints reales del ERP a integrar.",
+
+  "producto": {
+    "endpoint": "ENDPOINT_ERP/productos",
+    "method": "GET",
+    "itemsPath": "data",
+    "_comentario_itemsPath": "Path al array de resultados en la respuesta JSON. Ej: 'value' para SAP, 'data' para APIs REST estándar, vacío si la respuesta es directamente un array.",
+    "mappings": {
+      "erpId": "CAMPO_ERP_ID",
+      "codigo": "CAMPO_ERP_CODIGO",
+      "nombre": "CAMPO_ERP_NOMBRE",
+      "descripcion": "CAMPO_ERP_DESCRIPCION",
+      "stock": "CAMPO_ERP_STOCK",
+      "precio": "CAMPO_ERP_PRECIO",
+      "unidad": "CAMPO_ERP_UNIDAD",
+      "categoria": "CAMPO_ERP_CATEGORIA"
+    }
+  },
+  "cliente": {
+    "endpoint": "ENDPOINT_ERP/clientes",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "erpId": "CAMPO_ERP_ID",
+      "codigo": "CAMPO_ERP_CODIGO",
+      "razonSocial": "CAMPO_ERP_RAZON_SOCIAL",
+      "cuit": "CAMPO_ERP_CUIT",
+      "direccion": "CAMPO_ERP_DIRECCION",
+      "telefono": "CAMPO_ERP_TELEFONO",
+      "email": "CAMPO_ERP_EMAIL",
+      "listaPrecio": "CAMPO_ERP_LISTA_PRECIO"
+    }
+  },
+  "precio": {
+    "endpoint": "ENDPOINT_ERP/precios",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "productoErpId": "CAMPO_ERP_PRODUCTO_ID",
+      "clienteErpId": "CAMPO_ERP_CLIENTE_ID",
+      "precio": "CAMPO_ERP_PRECIO",
+      "moneda": "CAMPO_ERP_MONEDA",
+      "listaPrecioId": "CAMPO_ERP_LISTA_ID"
+    }
+  },
+  "stock": {
+    "endpoint": "ENDPOINT_ERP/stock",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "productoErpId": "CAMPO_ERP_PRODUCTO_ID",
+      "cantidad": "CAMPO_ERP_CANTIDAD",
+      "deposito": "CAMPO_ERP_DEPOSITO"
+    }
+  },
+  "cuentaCorriente": {
+    "endpoint": "ENDPOINT_ERP/cuenta-corriente",
+    "method": "GET",
+    "itemsPath": "data",
+    "mappings": {
+      "erpId": "CAMPO_ERP_ID",
+      "clienteErpId": "CAMPO_ERP_CLIENTE_ID",
+      "tipoMovimiento": "CAMPO_ERP_TIPO",
+      "numero": "CAMPO_ERP_NUMERO",
+      "fecha": "CAMPO_ERP_FECHA",
+      "fechaVencimiento": "CAMPO_ERP_VENCIMIENTO",
+      "debe": "CAMPO_ERP_DEBE",
+      "haber": "CAMPO_ERP_HABER",
+      "saldo": "CAMPO_ERP_SALDO"
+    }
+  },
+  "pedido": {
+    "endpoint": "ENDPOINT_ERP/pedidos",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CAMPO_ERP_CLIENTE_ID",
+      "observacion": "CAMPO_ERP_OBSERVACION"
+    },
+    "itemsMappings": {
+      "productoErpId": "CAMPO_ERP_PRODUCTO_ID",
+      "cantidad": "CAMPO_ERP_CANTIDAD",
+      "precio": "CAMPO_ERP_PRECIO",
+      "descuento": "CAMPO_ERP_DESCUENTO"
+    }
+  },
+  "cobranza": {
+    "endpoint": "ENDPOINT_ERP/cobranzas",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CAMPO_ERP_CLIENTE_ID",
+      "monto": "CAMPO_ERP_MONTO",
+      "medioPago": "CAMPO_ERP_MEDIO_PAGO",
+      "referencia": "CAMPO_ERP_REFERENCIA"
+    }
+  },
+  "devolucion": {
+    "endpoint": "ENDPOINT_ERP/devoluciones",
+    "method": "POST",
+    "mappings": {
+      "clienteErpId": "CAMPO_ERP_CLIENTE_ID",
+      "observacion": "CAMPO_ERP_OBSERVACION",
+      "facturaNumero": "CAMPO_ERP_FACTURA"
+    },
+    "itemsMappings": {
+      "productoErpId": "CAMPO_ERP_PRODUCTO_ID",
+      "cantidad": "CAMPO_ERP_CANTIDAD",
+      "precio": "CAMPO_ERP_PRECIO",
+      "motivo": "CAMPO_ERP_MOTIVO"
+    }
+  }
+}

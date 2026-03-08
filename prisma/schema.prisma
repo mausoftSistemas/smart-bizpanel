@@ -1,0 +1,523 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══ MULTI-TENANT ═══
+
+model Tenant {
+  id              String   @id @default(uuid())
+  codigo          String   @unique
+  razonSocial     String
+  cuit            String?
+  email           String
+  plan            String   @default("basico")
+  maxVendedores   Int      @default(5)
+  estado          String   @default("activo")
+
+  // Módulos habilitados
+  moduloGps       Boolean  @default(false)
+  moduloMp        Boolean  @default(false)
+  moduloFirma     Boolean  @default(false)
+  moduloEmail     Boolean  @default(false)
+
+  // Config ERP
+  erpTipo         String   @default("standalone") // standalone, sap_b1, tango, custom
+  erpUrl          String?
+  erpCredenciales Json?    // encrypted
+  erpMapping      Json?    // field mapping JSON
+
+  // White Label
+  logo            String?
+  colorPrimario   String   @default("#1565C0")
+  colorSecundario String   @default("#00E5FF")
+  nombreApp       String   @default("BizVentas")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users           User[]
+  productos       Producto[]
+  clientes        Cliente[]
+  pedidos         Pedido[]
+  cobranzas       Cobranza[]
+  rutas           Ruta[]
+  politicas       PoliticaComercial[]
+  config          TenantConfig?
+}
+
+model TenantConfig {
+  id                    String  @id @default(uuid())
+  tenantId              String  @unique
+  tenant                Tenant  @relation(fields: [tenantId], references: [id])
+
+  // Moneda y formato
+  moneda                String  @default("ARS")
+  formatoFecha          String  @default("dd/MM/yyyy")
+  ivaDefault            Float   @default(21)
+
+  // Pedidos
+  montoMinimoPedido     Float   @default(0)
+  montoMaximoPedido     Float   @default(0)
+  permitePedidoSinStock Boolean @default(true)
+  requiereFirma         Boolean @default(false)
+
+  // Cobranza
+  permiteEfectivo       Boolean @default(true)
+  permiteCheque         Boolean @default(true)
+  permiteTransferencia  Boolean @default(true)
+  permiteBilletera      Boolean @default(true)
+  permiteMercadoPago    Boolean @default(false)
+
+  // Jornada
+  jornadaObligatoria    Boolean @default(true)
+  horaInicioMin         String  @default("06:00")
+  horaInicioMax         String  @default("09:00")
+  horaFinMax            String  @default("21:00")
+  requiereGeoInicio     Boolean @default(false)
+
+  // Descuentos
+  maxDescuentoVendedor  Float   @default(10)
+  maxDescuentoSupervisor Float  @default(20)
+
+  // Devoluciones
+  diasLimiteDevolucion  Int     @default(30)
+  devolucionRequiereFoto Boolean @default(true)
+  devolucionRequiereAprobacion Boolean @default(true)
+
+  // GPS
+  trackingIntervaloSeg  Int     @default(30)
+  trackingActivo        Boolean @default(true)
+
+  updatedAt             DateTime @updatedAt
+}
+
+// ═══ USUARIOS ═══
+
+model User {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  email         String
+  passwordHash  String
+  nombre        String
+  rol           String   // admin, supervisor, vendedor, deposito, repartidor
+  activo        Boolean  @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime @default(now())
+
+  pedidos       Pedido[]
+  cobranzas     Cobranza[]
+  jornadas      Jornada[]
+  visitas       Visita[]
+
+  @@unique([tenantId, email])
+}
+
+// ═══ CATÁLOGO ═══
+
+model Producto {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  codigo        String
+  nombre        String
+  descripcion   String?
+  categoria     String?
+  marca         String?
+  precioLista   Float
+  moneda        String   @default("ARS")
+  stockBulto    Float    @default(0)
+  stockUnidad   Float    @default(0)
+  equivalencia  Float    @default(1)
+  unidadMedida  String   @default("UN")
+  ivaPorcentaje Float    @default(21)
+  pesoKg        Float    @default(0)
+  codigoBarras  String?
+  imagenUrl     String?
+  activo        Boolean  @default(true)
+  erpId         String?  // ID en el ERP externo
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, codigo])
+}
+
+// ═══ CLIENTES ═══
+
+model Cliente {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  codigo          String
+  nombre          String
+  direccion       String?
+  ciudad          String?
+  provincia       String?
+  telefono        String?
+  email           String?
+  cuit            String?
+  condicionIva    String?
+  condicionVenta  String?
+  listaPrecioId   String?
+  saldoCuenta     Float    @default(0)
+  limiteCredito   Float    @default(0)
+  latitud         Float?
+  longitud        Float?
+  vendedorId      String?
+  rutaId          String?
+  canal           String?
+  segmento        String?
+  activo          Boolean  @default(true)
+  erpId           String?
+  updatedAt       DateTime @updatedAt
+
+  pedidos         Pedido[]
+  cobranzas       Cobranza[]
+  cuentaCorriente CuentaCorriente[]
+
+  @@unique([tenantId, codigo])
+}
+
+// ═══ PEDIDOS ═══
+
+model Pedido {
+  id              String       @id @default(uuid())
+  tenantId        String
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  clienteId       String
+  cliente         Cliente      @relation(fields: [clienteId], references: [id])
+  vendedorId      String
+  vendedor        User         @relation(fields: [vendedorId], references: [id])
+  fecha           DateTime
+  estado          String       @default("pendiente")
+  tipoComprobante String?
+  subtotal        Float        @default(0)
+  descuentoGlobal Float        @default(0)
+  total           Float        @default(0)
+  observaciones   String?
+  jornadaId       String?
+  appLocalId      String?      // UUID que mandó la app
+  erpId           String?      // ID en el ERP
+  erpSynced       Boolean      @default(false)
+  erpError        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  items           PedidoItem[]
+}
+
+model PedidoItem {
+  id                  Int     @id @default(autoincrement())
+  pedidoId            String
+  pedido              Pedido  @relation(fields: [pedidoId], references: [id])
+  productoId          String
+  productoCodigo      String
+  productoNombre      String
+  cantidad            Float
+  unidadTipo          String  @default("unidad")
+  precioUnitario      Float
+  descuentoPorcentaje Float   @default(0)
+  subtotal            Float
+}
+
+// ═══ COBRANZA ═══
+
+model Cobranza {
+  id            String          @id @default(uuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  clienteId     String
+  cliente       Cliente         @relation(fields: [clienteId], references: [id])
+  vendedorId    String
+  vendedor      User            @relation(fields: [vendedorId], references: [id])
+  fecha         DateTime
+  total         Float
+  estado        String          @default("confirmado")
+  appLocalId    String?
+  erpId         String?
+  erpSynced     Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+
+  medios        CobranzaMedio[]
+}
+
+model CobranzaMedio {
+  id          Int      @id @default(autoincrement())
+  cobranzaId  String
+  cobranza    Cobranza @relation(fields: [cobranzaId], references: [id])
+  tipo        String   // efectivo, cheque, transferencia, billetera, tarjeta, retencion, mp
+  monto       Float
+  moneda      String   @default("ARS")
+  datos       Json     // campos específicos del medio
+}
+
+// ═══ CUENTA CORRIENTE ═══
+
+model CuentaCorriente {
+  id              String   @id @default(uuid())
+  tenantId        String
+  clienteId       String
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  tipoMovimiento  String   // factura, nota_credito, nota_debito, recibo
+  numero          String?
+  fecha           DateTime
+  fechaVencimiento DateTime?
+  debe            Float    @default(0)
+  haber           Float    @default(0)
+  saldo           Float    @default(0)
+  estado          String   @default("pendiente")
+  erpId           String?
+  createdAt       DateTime @default(now())
+}
+
+// ═══ JORNADAS Y VISITAS ═══
+
+model Jornada {
+  id                String   @id @default(uuid())
+  tenantId          String
+  vendedorId        String
+  vendedor          User     @relation(fields: [vendedorId], references: [id])
+  fecha             DateTime
+  horaInicio        DateTime
+  horaFin           DateTime?
+  estado            String   @default("activa")
+  inicioLat         Float?
+  inicioLng         Float?
+  finLat            Float?
+  finLng            Float?
+  clientesPlan      Int      @default(0)
+  clientesVisitados Int      @default(0)
+  totalVendido      Float    @default(0)
+  totalCobrado      Float    @default(0)
+  kmRecorridos      Float    @default(0)
+  appLocalId        String?
+
+  visitas           Visita[]
+  gpsPoints         GpsPoint[]
+}
+
+model Visita {
+  id          String   @id @default(uuid())
+  jornadaId   String
+  jornada     Jornada  @relation(fields: [jornadaId], references: [id])
+  clienteId   String
+  vendedorId  String
+  vendedor    User     @relation(fields: [vendedorId], references: [id])
+  fechaHora   DateTime
+  tipo        String   // pedido, no_compra, cobranza, visita, devolucion
+  resultado   String?
+  pedidoId    String?
+  monto       Float    @default(0)
+  latitud     Float?
+  longitud    Float?
+  appLocalId  String?
+}
+
+// ═══ GPS ═══
+
+model GpsPoint {
+  id          Int      @id @default(autoincrement())
+  jornadaId   String
+  jornada     Jornada  @relation(fields: [jornadaId], references: [id])
+  vendedorId  String
+  latitud     Float
+  longitud    Float
+  velocidad   Float?
+  timestamp   DateTime
+  bateria     Int?
+}
+
+// ═══ RUTAS ═══
+
+model Ruta {
+  id          String       @id @default(uuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  nombre      String
+  diaSemana   Int?
+  vendedorId  String?
+
+  clientes    RutaCliente[]
+}
+
+model RutaCliente {
+  id        Int    @id @default(autoincrement())
+  rutaId    String
+  ruta      Ruta   @relation(fields: [rutaId], references: [id])
+  clienteId String
+  orden     Int    @default(0)
+}
+
+// ═══ DEVOLUCIONES ═══
+
+model Devolucion {
+  id              String   @id @default(uuid())
+  tenantId        String
+  clienteId       String
+  vendedorId      String
+  pedidoOriginalId String?
+  facturaNumero   String?
+  tipo            String   // devolucion_total, devolucion_parcial, cambio, reclamo
+  estado          String   @default("pendiente")
+  total           Float    @default(0)
+  motivoGeneral   String?
+  aprobadaPor     String?
+  fechaAprobacion DateTime?
+  ncNumero        String?
+  erpId           String?
+  erpSynced       Boolean  @default(false)
+  appLocalId      String?
+  createdAt       DateTime @default(now())
+
+  items           DevolucionItem[]
+}
+
+model DevolucionItem {
+  id              Int        @id @default(autoincrement())
+  devolucionId    String
+  devolucion      Devolucion @relation(fields: [devolucionId], references: [id])
+  productoId      String
+  productoCodigo  String
+  productoNombre  String
+  cantidadDevuelta Float
+  precioUnitario  Float
+  motivo          String?
+  lote            String?
+  subtotal        Float
+}
+
+// ═══ POLÍTICAS COMERCIALES ═══
+
+model PoliticaComercial {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  nombre      String
+  evento      String
+  condiciones Json
+  accion      String
+  accionParams Json?
+  mensaje     String?
+  prioridad   Int      @default(0)
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// ═══ PRECIOS ESPECIALES POR CLIENTE ═══
+
+model PrecioCliente {
+  id          String   @id @default(uuid())
+  tenantId    String
+  clienteId   String
+  productoId  String
+  precio      Float
+  descuento   Float    @default(0)
+  moneda      String   @default("ARS")
+  vigenciaDesde DateTime?
+  vigenciaHasta DateTime?
+  activo      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, clienteId, productoId])
+}
+
+// ═══ CATÁLOGOS ═══
+
+model CondicionVenta {
+  id          String   @id @default(uuid())
+  tenantId    String
+  codigo      String
+  nombre      String
+  diasPlazo   Int      @default(0)
+  activo      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, codigo])
+}
+
+model MotivoNoCompra {
+  id          String   @id @default(uuid())
+  tenantId    String
+  codigo      String
+  descripcion String
+  activo      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, codigo])
+}
+
+// ═══ OBJETIVOS ═══
+
+model Objetivo {
+  id            String   @id @default(uuid())
+  tenantId      String
+  vendedorId    String?  // null = aplica a todos
+  tipo          String   // general, focal
+  nombre        String
+  metrica       String   // monto_venta, cantidad_pedidos, clientes_visitados, cobranza, mix_productos
+  valorObjetivo Float
+  valorActual   Float    @default(0)
+  productoId    String?  // para objetivos focales de producto
+  categoriaId   String?  // para objetivos focales de categoría
+  periodoInicio DateTime
+  periodoFin    DateTime
+  activo        Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+}
+
+// ═══ MENSAJES / NOTIFICACIONES ═══
+
+model Mensaje {
+  id          String   @id @default(uuid())
+  tenantId    String
+  vendedorId  String?  // null = broadcast a todos
+  titulo      String
+  cuerpo      String
+  tipo        String   @default("info") // info, alerta, urgente
+  leido       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ═══ BILLETERAS VIRTUALES ═══
+
+model Billetera {
+  id          String   @id @default(uuid())
+  tenantId    String
+  nombre      String
+  alias       String?
+  cbu         String?
+  activo      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+}
+
+// ═══ DENOMINACIONES (PARA ARQUEO DE CAJA) ═══
+
+model Denominacion {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tipo        String   // billete, moneda
+  valor       Float
+  moneda      String   @default("ARS")
+  activo      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+}
+
+// ═══ SYNC LOG ═══
+
+model SyncLog {
+  id          Int      @id @default(autoincrement())
+  tenantId    String
+  userId      String
+  direction   String   // push, pull
+  entityType  String   // productos, clientes, pedidos, etc.
+  recordCount Int      @default(0)
+  status      String   // success, error
+  errorDetail String?
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+}
