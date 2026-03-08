@@ -17,6 +17,9 @@ import webhookRoutes from './routes/webhook.routes';
 
 const app = express();
 
+// Confiar en el reverse proxy (EasyPanel, Nginx, etc.)
+app.set('trust proxy', 1);
+
 // ─── Global middleware ──────────────────────────────────────
 app.use(helmetMiddleware);
 app.use(corsMiddleware);
