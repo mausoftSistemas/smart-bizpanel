@@ -8,9 +8,26 @@ import { logger } from './logger';
  * Se ejecuta automáticamente al arrancar la API.
  */
 export async function autoSeed(prisma: PrismaClient): Promise<void> {
+  // SuperAdmin: siempre upsert (idempotente, independiente de los datos de tenant)
+  try {
+    const saHash = await bcrypt.hash('superadmin123', 10);
+    await prisma.superAdmin.upsert({
+      where: { email: 'superadmin@bizventas.com' },
+      update: {},
+      create: {
+        email: 'superadmin@bizventas.com',
+        passwordHash: saHash,
+        nombre: 'Super Administrador',
+      },
+    });
+    logger.info('Auto-seed: SuperAdmin ensured');
+  } catch (e) {
+    logger.warn('Auto-seed: SuperAdmin upsert skipped', e);
+  }
+
   const tenantCount = await prisma.tenant.count();
   if (tenantCount > 0) {
-    logger.info('Auto-seed: DB already has data, skipping');
+    logger.info('Auto-seed: DB already has data, skipping tenant seed');
     return;
   }
 
