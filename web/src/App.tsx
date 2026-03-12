@@ -34,6 +34,7 @@ import TenantsList from './pages/super/TenantsList'
 import TenantCreate from './pages/super/TenantCreate'
 import TenantDetail from './pages/super/TenantDetail'
 import Billing from './pages/super/Billing'
+import SuperAdminsList from './pages/super/SuperAdminsList'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="tenants/new" element={<TenantCreate />} />
           <Route path="tenants/:id" element={<TenantDetail />} />
           <Route path="billing" element={<Billing />} />
+          <Route path="admins" element={<SuperAdminsList />} />
           {/* Placeholder pages para links futuros */}
           <Route path="activity" element={<PlaceholderPage title="Actividad Global" />} />
           <Route path="sync" element={<PlaceholderPage title="Sync Status Global" />} />

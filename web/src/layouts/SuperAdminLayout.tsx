@@ -64,6 +64,7 @@ const sections: NavSection[] = [
   {
     title: 'Sistema',
     items: [
+      { label: 'Super Admins', to: '/super/admins', icon: <Shield size={18} /> },
       { label: 'Mi Cuenta', to: '/super/account', icon: <User size={18} /> },
       { label: 'Logs del Sistema', to: '/super/logs', icon: <Terminal size={18} /> },
     ],
@@ -78,6 +79,7 @@ const breadcrumbMap: Record<string, string> = {
   '/super/activity': 'Actividad Global',
   '/super/sync': 'Sync Status',
   '/super/storage': 'Almacenamiento',
+  '/super/admins': 'Super Admins',
   '/super/account': 'Mi Cuenta',
   '/super/logs': 'Logs',
 }

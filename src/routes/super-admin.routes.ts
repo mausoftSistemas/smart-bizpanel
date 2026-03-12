@@ -69,6 +69,122 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // ══════════════════════════════════════════════════════════
+// GESTIÓN DE SUPER ADMINS
+// ══════════════════════════════════════════════════════════
+
+// ─── GET /api/super/admins ───────────────────────────────
+
+router.get('/admins', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const admins = await prisma.superAdmin.findMany({
+      select: { id: true, email: true, nombre: true, activo: true, createdAt: true, lastLogin: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    successResponse(res, admins);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/super/admins ──────────────────────────────
+
+router.post('/admins', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password, nombre } = req.body;
+    if (!email || !password || !nombre) {
+      throw new ValidationError('email, password y nombre son obligatorios');
+    }
+
+    const existing = await prisma.superAdmin.findUnique({ where: { email } });
+    if (existing) throw new ValidationError('Ya existe un super admin con ese email');
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const admin = await prisma.superAdmin.create({
+      data: { email, passwordHash, nombre },
+      select: { id: true, email: true, nombre: true, activo: true, createdAt: true },
+    });
+
+    successResponse(res, admin, 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUT /api/super/admins/:id ───────────────────────────
+
+router.put('/admins/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.superAdmin.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Super Admin');
+
+    const { nombre, email, activo } = req.body;
+    const data: Record<string, unknown> = {};
+    if (nombre !== undefined) data.nombre = nombre;
+    if (email !== undefined) {
+      const dup = await prisma.superAdmin.findUnique({ where: { email } });
+      if (dup && dup.id !== id) throw new ValidationError('Ya existe otro super admin con ese email');
+      data.email = email;
+    }
+    if (activo !== undefined) data.activo = activo;
+
+    const updated = await prisma.superAdmin.update({
+      where: { id },
+      data,
+      select: { id: true, email: true, nombre: true, activo: true, createdAt: true, lastLogin: true },
+    });
+
+    successResponse(res, updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUT /api/super/admins/:id/password ──────────────────
+
+router.put('/admins/:id/password', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      throw new ValidationError('La contraseña debe tener al menos 6 caracteres');
+    }
+
+    const existing = await prisma.superAdmin.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Super Admin');
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await prisma.superAdmin.update({ where: { id }, data: { passwordHash } });
+
+    successResponse(res, { mensaje: 'Contraseña actualizada' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── DELETE /api/super/admins/:id ────────────────────────
+
+router.delete('/admins/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const currentId = req.superAdmin!.superAdminId;
+
+    if (id === currentId) {
+      throw new ValidationError('No podés desactivar tu propia cuenta');
+    }
+
+    const existing = await prisma.superAdmin.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Super Admin');
+
+    await prisma.superAdmin.update({ where: { id }, data: { activo: false } });
+
+    successResponse(res, { mensaje: `Super Admin "${existing.nombre}" desactivado` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════
 
