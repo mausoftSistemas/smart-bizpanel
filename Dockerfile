@@ -30,9 +30,12 @@ COPY --from=builder /app/web/dist ./web/dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/docker-entrypoint.sh ./
+
+RUN chmod +x docker-entrypoint.sh
 
 ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["./docker-entrypoint.sh"]
