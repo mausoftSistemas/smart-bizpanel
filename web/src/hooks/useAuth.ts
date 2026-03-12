@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback } from 'react'
 import api from '../api/client'
 
-interface User {
+export interface User {
   id: string
   email: string
   nombre: string
@@ -24,7 +24,21 @@ interface SuperLoginParams {
   password: string
 }
 
-export function useAuth() {
+interface AuthContextValue {
+  token: string | null
+  user: User | null
+  login: (params: LoginParams) => Promise<User>
+  superLogin: (params: SuperLoginParams) => Promise<User>
+  impersonate: (tenantId: string) => Promise<void>
+  exitImpersonate: () => void
+  logout: () => void
+  isSuperAdmin: boolean
+  isImpersonating: boolean
+}
+
+export const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function useAuthProvider(): AuthContextValue {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [user, setUser] = useState<User | null>(() => {
     const stored = localStorage.getItem('user')
@@ -54,7 +68,6 @@ export function useAuth() {
   }, [])
 
   const impersonate = useCallback(async (tenantId: string) => {
-    // Guardar token actual de super admin para poder volver
     const currentToken = localStorage.getItem('token')
     const currentUser = localStorage.getItem('user')
     if (currentToken) localStorage.setItem('superToken', currentToken)
@@ -104,4 +117,10 @@ export function useAuth() {
   const isImpersonating = user?.impersonated === true
 
   return { token, user, login, superLogin, impersonate, exitImpersonate, logout, isSuperAdmin, isImpersonating }
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
+  return ctx
 }
