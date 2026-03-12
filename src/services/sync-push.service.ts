@@ -29,6 +29,17 @@ interface PushPedidoInput {
   total: number;
   observaciones?: string;
   jornadaId?: string;
+  // Campos ERP
+  horaInicio?: string;
+  horaFin?: string;
+  fechaEntrega?: string;
+  netoTotal?: number;
+  cantidadItems?: number;
+  latitud?: number;
+  longitud?: number;
+  codigoEstado?: string;
+  condicionVtaCodigo?: string;
+  listaPrecioUsada?: string;
   items: {
     productoId: string;
     productoCodigo: string;
@@ -38,6 +49,11 @@ interface PushPedidoInput {
     precioUnitario: number;
     descuentoPorcentaje?: number;
     subtotal: number;
+    // Campos ERP
+    codigoCombo?: string;
+    precioNeto?: number;
+    listaPrecio?: string;
+    bultoUnidad?: number;
   }[];
 }
 
@@ -48,11 +64,39 @@ interface PushCobranzaInput {
   fecha: string;
   total: number;
   estado?: string;
+  // Campos ERP
+  horaInicio?: string;
+  horaFin?: string;
+  numeroRecibo?: string;
+  latitud?: number;
+  longitud?: number;
+  codigoVendedor?: string;
   medios: {
     tipo: string;
     monto: number;
     moneda?: string;
     datos?: object;
+    // Campos ERP
+    codigoMedioPago?: string;
+    numeroReferencia?: string;
+    plazaCheque?: string;
+    fechaEmision?: string;
+    fechaVencimiento?: string;
+    cotizacion?: number;
+    cuitAcreedor?: string;
+    titularTarjeta?: string;
+    codigoAutorizacion?: string;
+    codigoLote?: string;
+    cuotas?: number;
+    numeroCupon?: string;
+  }[];
+  imputaciones?: {
+    tipoComprobante: string;
+    sucursal: string;
+    numeroComprobante: string;
+    importeCobrado: number;
+    numeroCuota?: number;
+    letraComprobante?: string;
   }[];
 }
 
@@ -68,6 +112,12 @@ interface PushVisitaInput {
   monto?: number;
   latitud?: number;
   longitud?: number;
+  // Campos ERP
+  codigoZona?: string;
+  codigoNoCompra?: string;
+  horaRegistro?: string;
+  codigoVendedor?: string;
+  codigoCliente?: string;
 }
 
 interface PushJornadaInput {
@@ -162,6 +212,17 @@ export class SyncPushService {
             observaciones: item.observaciones,
             jornadaId: item.jornadaId,
             appLocalId: item.localId,
+            // Campos ERP
+            horaInicio: item.horaInicio,
+            horaFin: item.horaFin,
+            fechaEntrega: item.fechaEntrega ? new Date(item.fechaEntrega) : undefined,
+            netoTotal: item.netoTotal ?? 0,
+            cantidadItems: item.cantidadItems ?? 0,
+            latitud: item.latitud,
+            longitud: item.longitud,
+            codigoEstado: item.codigoEstado ?? '0',
+            condicionVtaCodigo: item.condicionVtaCodigo,
+            listaPrecioUsada: item.listaPrecioUsada,
             items: {
               create: item.items.map((i) => ({
                 productoId: i.productoId,
@@ -172,6 +233,11 @@ export class SyncPushService {
                 precioUnitario: i.precioUnitario,
                 descuentoPorcentaje: i.descuentoPorcentaje || 0,
                 subtotal: i.subtotal,
+                // Campos ERP
+                codigoCombo: i.codigoCombo,
+                precioNeto: i.precioNeto ?? 0,
+                listaPrecio: i.listaPrecio,
+                bultoUnidad: i.bultoUnidad ?? 1,
               })),
             },
           },
@@ -213,14 +279,47 @@ export class SyncPushService {
               total: item.total,
               estado: item.estado || 'confirmado',
               appLocalId: item.localId,
+              // Campos ERP
+              horaInicio: item.horaInicio,
+              horaFin: item.horaFin,
+              numeroRecibo: item.numeroRecibo,
+              latitud: item.latitud,
+              longitud: item.longitud,
+              codigoVendedor: item.codigoVendedor,
               medios: {
                 create: item.medios.map((m) => ({
                   tipo: m.tipo,
                   monto: m.monto,
                   moneda: m.moneda || 'ARS',
                   datos: (m.datos || {}) as Prisma.InputJsonValue,
+                  // Campos ERP
+                  codigoMedioPago: m.codigoMedioPago,
+                  numeroReferencia: m.numeroReferencia,
+                  plazaCheque: m.plazaCheque,
+                  fechaEmision: m.fechaEmision ? new Date(m.fechaEmision) : undefined,
+                  fechaVencimiento: m.fechaVencimiento ? new Date(m.fechaVencimiento) : undefined,
+                  cotizacion: m.cotizacion ?? 1,
+                  cuitAcreedor: m.cuitAcreedor,
+                  titularTarjeta: m.titularTarjeta,
+                  codigoAutorizacion: m.codigoAutorizacion,
+                  codigoLote: m.codigoLote,
+                  cuotas: m.cuotas,
+                  numeroCupon: m.numeroCupon,
                 })),
               },
+              // Imputaciones ERP
+              ...(item.imputaciones?.length && {
+                imputaciones: {
+                  create: item.imputaciones.map((imp) => ({
+                    tipoComprobante: imp.tipoComprobante,
+                    sucursal: imp.sucursal,
+                    numeroComprobante: imp.numeroComprobante,
+                    importeCobrado: imp.importeCobrado,
+                    numeroCuota: imp.numeroCuota ?? 1,
+                    letraComprobante: imp.letraComprobante,
+                  })),
+                },
+              }),
             },
           });
 
@@ -272,6 +371,12 @@ export class SyncPushService {
             latitud: item.latitud,
             longitud: item.longitud,
             appLocalId: item.localId,
+            // Campos ERP
+            codigoZona: item.codigoZona,
+            codigoNoCompra: item.codigoNoCompra,
+            horaRegistro: item.horaRegistro,
+            codigoVendedor: item.codigoVendedor,
+            codigoCliente: item.codigoCliente,
           },
         });
 

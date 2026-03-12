@@ -16,6 +16,8 @@ import configRoutes from './routes/config.routes';
 import adminRoutes from './routes/admin.routes';
 import webhookRoutes from './routes/webhook.routes';
 import importRoutes from './routes/import.routes';
+import superAdminRoutes from './routes/super-admin.routes';
+import intercambioRoutes from './routes/intercambio.routes';
 
 const app = express();
 
@@ -48,6 +50,8 @@ app.use('/api/config', configRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/super', superAdminRoutes);
+app.use('/api/intercambio', intercambioRoutes);
 
 // ─── Frontend SPA ────────────────────────────────────────────
 const webDist = path.join(__dirname, '..', 'web', 'dist');

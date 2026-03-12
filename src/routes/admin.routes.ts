@@ -383,6 +383,404 @@ router.delete('/politicas/:id', async (req: Request, res: Response, next: NextFu
 });
 
 // ═══════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════
+
+router.get('/dashboard', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [
+      vendedoresActivos,
+      pedidosHoy,
+      cobranzasHoy,
+      productosActivos,
+      clientesActivos,
+    ] = await Promise.all([
+      prisma.jornada.count({ where: { tenantId, estado: 'activa', fecha: { gte: today } } }),
+      prisma.pedido.findMany({
+        where: { tenantId, createdAt: { gte: today } },
+        select: { total: true },
+      }),
+      prisma.cobranza.findMany({
+        where: { tenantId, createdAt: { gte: today } },
+        select: { total: true },
+      }),
+      prisma.producto.count({ where: { tenantId, activo: true } }),
+      prisma.cliente.count({ where: { tenantId, activo: true } }),
+    ]);
+
+    const montoPedidosHoy = pedidosHoy.reduce((sum, p) => sum + Number(p.total ?? 0), 0);
+    const montoCobranzasHoy = cobranzasHoy.reduce((sum, c) => sum + Number(c.total ?? 0), 0);
+
+    // Ventas últimos 7 días
+    const ventasSemana: { dia: string; monto: number }[] = [];
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+
+      const pedidos = await prisma.pedido.findMany({
+        where: { tenantId, createdAt: { gte: d, lt: next } },
+        select: { total: true },
+      });
+      const monto = pedidos.reduce((sum, p) => sum + Number(p.total ?? 0), 0);
+      ventasSemana.push({ dia: dias[d.getDay()], monto });
+    }
+
+    // Últimos 10 pedidos
+    const ultimosPedidos = await prisma.pedido.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true, fecha: true, total: true, estado: true, createdAt: true,
+        cliente: { select: { nombre: true, codigo: true } },
+        vendedor: { select: { nombre: true } },
+      },
+    });
+
+    // Sync pendientes
+    const syncPendientes = await prisma.pedido.count({
+      where: { tenantId, erpSynced: false },
+    });
+
+    successResponse(res, {
+      vendedoresActivos,
+      pedidosHoy: pedidosHoy.length,
+      montoPedidosHoy,
+      cobranzasHoy: cobranzasHoy.length,
+      montoCobranzasHoy,
+      productosActivos,
+      clientesActivos,
+      syncPendientes,
+      ventasSemana,
+      ultimosPedidos,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CUENTA CORRIENTE
+// ═══════════════════════════════════════════════════════════
+
+router.get('/cuenta-corriente', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const clienteId = req.query.clienteId as string | undefined;
+    const page = Number(req.query.page) || 1;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+    const where: Record<string, unknown> = { tenantId };
+    if (clienteId) where.clienteId = clienteId;
+
+    const [data, total] = await Promise.all([
+      prisma.cuentaCorriente.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { fecha: 'desc' },
+        include: { cliente: { select: { nombre: true, codigo: true } } },
+      }),
+      prisma.cuentaCorriente.count({ where }),
+    ]);
+    paginatedResponse(res, data, total, page, limit);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/cuenta-corriente', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { clienteId, tipoMovimiento, numero, fecha, fechaVencimiento, monto } = req.body;
+
+    if (!clienteId || !tipoMovimiento || !numero || !fecha || monto === undefined) {
+      throw new ValidationError('clienteId, tipoMovimiento, numero, fecha y monto son requeridos');
+    }
+
+    const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, tenantId } });
+    if (!cliente) throw new NotFoundError('Cliente');
+
+    const esDebe = ['factura', 'nota_debito'].includes(tipoMovimiento);
+    const montoNum = Math.abs(Number(monto));
+
+    const movimiento = await prisma.cuentaCorriente.create({
+      data: {
+        tenantId,
+        clienteId,
+        tipoMovimiento,
+        numero,
+        fecha: new Date(fecha),
+        fechaVencimiento: fechaVencimiento ? new Date(fechaVencimiento) : null,
+        debe: esDebe ? montoNum : 0,
+        haber: esDebe ? 0 : montoNum,
+        saldo: 0, // se recalcula
+      },
+      include: { cliente: { select: { nombre: true, codigo: true } } },
+    });
+
+    // Recalcular saldo del cliente
+    const agg = await prisma.cuentaCorriente.aggregate({
+      where: { clienteId, tenantId },
+      _sum: { debe: true, haber: true },
+    });
+    const saldo = Number(agg._sum.debe ?? 0) - Number(agg._sum.haber ?? 0);
+
+    await prisma.cliente.update({
+      where: { id: clienteId },
+      data: { saldoCuenta: saldo },
+    });
+
+    successResponse(res, movimiento, 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// VENDEDORES
+// ═══════════════════════════════════════════════════════════
+
+router.get('/vendedores/activos', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Jornadas activas hoy
+    const jornadas = await prisma.jornada.findMany({
+      where: { tenantId, fecha: { gte: today }, estado: 'activa' },
+      include: {
+        vendedor: { select: { id: true, nombre: true, email: true } },
+        visitas: { select: { id: true } },
+      },
+    });
+
+    const result = await Promise.all(jornadas.map(async (j) => {
+      const lastGps = await prisma.gpsPoint.findFirst({
+        where: { vendedorId: j.vendedorId, jornadaId: j.id },
+        orderBy: { timestamp: 'desc' },
+      });
+      return {
+        vendedorId: j.vendedorId,
+        vendedorNombre: j.vendedor.nombre,
+        vendedorEmail: j.vendedor.email,
+        jornadaId: j.id,
+        horaInicio: j.horaInicio,
+        clientesVisitados: j.clientesVisitados,
+        clientesPlan: j.clientesPlan,
+        totalVendido: Number(j.totalVendido ?? 0),
+        totalCobrado: Number(j.totalCobrado ?? 0),
+        kmRecorridos: Number(j.kmRecorridos ?? 0),
+        visitasCount: j.visitas.length,
+        lastGps: lastGps ? {
+          latitud: Number(lastGps.latitud),
+          longitud: Number(lastGps.longitud),
+          timestamp: lastGps.timestamp,
+          velocidad: lastGps.velocidad ? Number(lastGps.velocidad) : null,
+          bateria: lastGps.bateria,
+        } : null,
+      };
+    }));
+
+    successResponse(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/vendedores/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const vendedorId = req.params.id as string;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const vendedor = await prisma.user.findFirst({
+      where: { id: vendedorId, tenantId },
+      select: { id: true, nombre: true, email: true, rol: true, lastLogin: true, activo: true },
+    });
+    if (!vendedor) throw new NotFoundError('Vendedor');
+
+    const jornadaActual = await prisma.jornada.findFirst({
+      where: { vendedorId, tenantId, fecha: { gte: today } },
+      orderBy: { horaInicio: 'desc' },
+      include: {
+        visitas: {
+          orderBy: { fechaHora: 'desc' },
+        },
+      },
+    });
+
+    // Resolve client names for visitas
+    if (jornadaActual?.visitas?.length) {
+      const clienteIds = [...new Set(jornadaActual.visitas.map(v => v.clienteId))];
+      const clientes = await prisma.cliente.findMany({
+        where: { id: { in: clienteIds } },
+        select: { id: true, nombre: true, codigo: true },
+      });
+      const clienteMap = Object.fromEntries(clientes.map(c => [c.id, c]));
+      (jornadaActual as any).visitas = jornadaActual.visitas.map(v => ({
+        ...v,
+        cliente: clienteMap[v.clienteId] || { nombre: '—', codigo: '' },
+      }));
+    }
+
+    const [pedidosHoy, cobranzasHoy] = await Promise.all([
+      prisma.pedido.findMany({
+        where: { vendedorId, tenantId, createdAt: { gte: today } },
+        select: { id: true, total: true, estado: true, cliente: { select: { nombre: true } } },
+      }),
+      prisma.cobranza.findMany({
+        where: { vendedorId, tenantId, createdAt: { gte: today } },
+        select: { id: true, total: true, cliente: { select: { nombre: true } } },
+      }),
+    ]);
+
+    successResponse(res, {
+      vendedor,
+      jornadaActual: jornadaActual ? {
+        ...jornadaActual,
+        totalVendido: Number(jornadaActual.totalVendido ?? 0),
+        totalCobrado: Number(jornadaActual.totalCobrado ?? 0),
+        kmRecorridos: Number(jornadaActual.kmRecorridos ?? 0),
+      } : null,
+      pedidosHoy: pedidosHoy.map(p => ({ ...p, total: Number(p.total) })),
+      cobranzasHoy: cobranzasHoy.map(c => ({ ...c, total: Number(c.total) })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/vendedores/:id/jornadas', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const vendedorId = req.params.id as string;
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+
+    const jornadas = await prisma.jornada.findMany({
+      where: { vendedorId, tenantId },
+      orderBy: { fecha: 'desc' },
+      take: limit,
+      select: {
+        id: true, fecha: true, horaInicio: true, horaFin: true, estado: true,
+        clientesPlan: true, clientesVisitados: true, totalVendido: true,
+        totalCobrado: true, kmRecorridos: true,
+      },
+    });
+
+    successResponse(res, jornadas.map(j => ({
+      ...j,
+      totalVendido: Number(j.totalVendido ?? 0),
+      totalCobrado: Number(j.totalCobrado ?? 0),
+      kmRecorridos: Number(j.kmRecorridos ?? 0),
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// REPORTES
+// ═══════════════════════════════════════════════════════════
+
+router.get('/reportes/ventas-vendedor', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const desde = req.query.desde ? new Date(req.query.desde as string) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d; })();
+    const hasta = req.query.hasta ? new Date(req.query.hasta as string) : new Date();
+
+    const vendedores = await prisma.user.findMany({
+      where: { tenantId, rol: { in: ['vendedor', 'supervisor'] }, activo: true },
+      select: { id: true, nombre: true },
+    });
+
+    const result = await Promise.all(vendedores.map(async (v) => {
+      const [pedidos, cobranzas, clientesVisitados] = await Promise.all([
+        prisma.pedido.findMany({
+          where: { vendedorId: v.id, tenantId, createdAt: { gte: desde, lte: hasta } },
+          select: { total: true },
+        }),
+        prisma.cobranza.findMany({
+          where: { vendedorId: v.id, tenantId, createdAt: { gte: desde, lte: hasta } },
+          select: { total: true },
+        }),
+        prisma.visita.count({
+          where: { vendedorId: v.id, fechaHora: { gte: desde, lte: hasta } },
+        }),
+      ]);
+
+      const totalClientes = await prisma.cliente.count({
+        where: { tenantId, vendedorId: v.id, activo: true },
+      });
+
+      const montoPedidos = pedidos.reduce((sum, p) => sum + Number(p.total ?? 0), 0);
+      const montoCobranzas = cobranzas.reduce((sum, c) => sum + Number(c.total ?? 0), 0);
+
+      return {
+        vendedorId: v.id,
+        vendedorNombre: v.nombre,
+        pedidos: pedidos.length,
+        montoPedidos,
+        cobranzas: cobranzas.length,
+        montoCobranzas,
+        ticketPromedio: pedidos.length > 0 ? montoPedidos / pedidos.length : 0,
+        clientesVisitados,
+        clientesTotal: totalClientes,
+        cobertura: totalClientes > 0 ? Math.round((clientesVisitados / totalClientes) * 100) : 0,
+      };
+    }));
+
+    successResponse(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/reportes/objetivos', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const tipo = req.query.tipo as string | undefined;
+
+    const where: Record<string, unknown> = { tenantId, activo: true };
+    if (tipo && ['general', 'focal'].includes(tipo)) where.tipo = tipo;
+
+    const objetivos = await prisma.objetivo.findMany({
+      where,
+      orderBy: { periodoFin: 'desc' },
+    });
+
+    // Resolve vendedor names
+    const vendedorIds = [...new Set(objetivos.map(o => o.vendedorId).filter(Boolean))] as string[];
+    const vendedores = vendedorIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: vendedorIds } }, select: { id: true, nombre: true } })
+      : [];
+    const vendedorMap = Object.fromEntries(vendedores.map(v => [v.id, v.nombre]));
+
+    successResponse(res, objetivos.map(o => ({
+      ...o,
+      valorObjetivo: Number(o.valorObjetivo ?? 0),
+      valorActual: Number(o.valorActual ?? 0),
+      porcentaje: Number(o.valorObjetivo) > 0
+        ? Math.round((Number(o.valorActual) / Number(o.valorObjetivo)) * 100)
+        : 0,
+      vendedorNombre: o.vendedorId ? (vendedorMap[o.vendedorId] || '—') : 'Todos',
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
 // SYNC LOG & ERP
 // ═══════════════════════════════════════════════════════════
 

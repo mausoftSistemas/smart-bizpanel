@@ -6,6 +6,18 @@ const prisma = new PrismaClient();
 export async function seedDatabase(db: PrismaClient) {
   console.log('Seeding database...');
 
+  // ═══ SUPER ADMIN ═══
+  const superAdminHash = await bcrypt.hash('superadmin123', 10);
+  await db.superAdmin.upsert({
+    where: { email: 'superadmin@bizventas.com' },
+    update: {},
+    create: {
+      email: 'superadmin@bizventas.com',
+      passwordHash: superAdminHash,
+      nombre: 'Super Administrador',
+    },
+  });
+
   // Crear tenant demo
   const tenant = await db.tenant.upsert({
     where: { codigo: 'demo' },
@@ -222,6 +234,7 @@ export async function seedDatabase(db: PrismaClient) {
   }
 
   console.log('Seed completed!');
+  console.log('  SUPER ADMIN: superadmin@bizventas.com / superadmin123');
   console.log('  admin@demo.com / admin123 (rol: admin)');
   console.log('  supervisor@demo.com / supervisor123 (rol: supervisor)');
   console.log('  vendedor@demo.com / vendedor123 (rol: vendedor)');

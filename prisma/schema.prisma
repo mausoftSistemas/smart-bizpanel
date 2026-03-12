@@ -7,6 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ═══ SUPER ADMIN ═══
+
+model SuperAdmin {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  nombre        String
+  activo        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  lastLogin     DateTime?
+}
+
 // ═══ MULTI-TENANT ═══
 
 model Tenant {
@@ -36,6 +48,27 @@ model Tenant {
   colorPrimario   String   @default("#1565C0")
   colorSecundario String   @default("#00E5FF")
   nombreApp       String   @default("BizVentas")
+
+  // Contacto de la empresa
+  contactoNombre    String?
+  contactoTelefono  String?
+  contactoEmail     String?
+  notas             String?    // notas internas sobre este cliente
+
+  // Facturación (cobro al cliente)
+  planPrecio        Float    @default(0)
+  planMoneda        String   @default("USD")
+  planPeriodicidad  String   @default("mensual") // mensual, anual
+  proximoVencimiento DateTime?
+  diasMora          Int      @default(0)
+
+  // Métricas de uso (cache, actualizadas periódicamente)
+  cantidadUsuarios     Int   @default(0)
+  cantidadProductos    Int   @default(0)
+  cantidadClientes     Int   @default(0)
+  cantidadPedidosMes   Int   @default(0)
+  ultimaActividad      DateTime?
+  almacenamientoMb     Float @default(0)
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -110,6 +143,11 @@ model User {
   lastLogin     DateTime?
   createdAt     DateTime @default(now())
 
+  // Campos ERP
+  codigoVendedor  String?   // código del vendedor en el ERP (004, 029, etc.)
+  codigoPersona   String?   // PERSONA del ERP
+  codigoZona      String?   // COD_ZONA
+
   pedidos       Pedido[]
   cobranzas     Cobranza[]
   jornadas      Jornada[]
@@ -143,6 +181,22 @@ model Producto {
   erpId         String?  // ID en el ERP externo
   updatedAt     DateTime @updatedAt
 
+  // Campos ERP
+  codigoRubro       String?   // CODIGO_RUBRO del ERP
+  nombreRubro       String?   // NOMBRE_RUBRO
+  codigoSubrubro    String?   // COD_SUBRUBRO
+  nombreSubrubro    String?   // NOMBRE_SUBRUBRO
+  codigoDeposito    String?   // COD_DEPOSITO
+  nombreDeposito    String?   // NOMBRE_DEPOSITO
+  listaPrecioId     String?   // LISTA_PRECIO (qué lista tiene)
+  nombreListaPrecio String?   // NOMBRE_LISTA
+  impuestoInterno   Float     @default(0)   // %IMP_INTERNO
+  costoNeto         Float     @default(0)   // COSTO_NETO
+  codigoEstado      String?   // COD_ESTADO del ERP
+  resumenUniMedida  String?   // RESUMEN_UNI_MEDIDA (abreviatura)
+  codigoUnidad      String?   // COD_UNIDAD
+  nombreUnidad      String?   // NOMBRE_UNI_MEDIDA completo
+
   @@unique([tenantId, codigo])
 }
 
@@ -175,9 +229,16 @@ model Cliente {
   erpId           String?
   updatedAt       DateTime @updatedAt
 
+  // Campos ERP
+  codigoPostal    String?   // COD_POSTAL
+  tipoDni         String?   // COD_DNI (tipo documento)
+  codigoArca      String?   // COD_ARCA (código AFIP/ARCA)
+  codigoEstado    String?   // COD_ESTADO del ERP
+
   pedidos         Pedido[]
   cobranzas       Cobranza[]
   cuentaCorriente CuentaCorriente[]
+  telefonos       ClienteTelefono[]
 
   @@unique([tenantId, codigo])
 }
@@ -207,6 +268,18 @@ model Pedido {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
+  // Campos ERP
+  horaInicio          String?   // HORA_PEDIDO_INI (hhmmss)
+  horaFin             String?   // HORA_PEDIDO_FIN
+  fechaEntrega        DateTime? // FECHA_ENTREGA solicitada
+  netoTotal           Float     @default(0)  // NETO_PEDIDO (total sin IVA)
+  cantidadItems       Int       @default(0)  // CANTID_ITEMS
+  latitud             Float?    // GPS al crear el pedido
+  longitud            Float?    // GPS al crear el pedido
+  codigoEstado        String    @default("0") // COD_ESTADO
+  condicionVtaCodigo  String?   // código de condición de venta
+  listaPrecioUsada    String?   // qué lista de precio se usó
+
   items           PedidoItem[]
 }
 
@@ -222,6 +295,12 @@ model PedidoItem {
   precioUnitario      Float
   descuentoPorcentaje Float   @default(0)
   subtotal            Float
+
+  // Campos ERP
+  codigoCombo     String?   // NCOMBO
+  precioNeto      Float     @default(0)  // PRECIO_NETO (precio sin IVA)
+  listaPrecio     String?   // LISTA_PRECIO
+  bultoUnidad     Int       @default(1)  // 1=bulto, 2=unidad (formato ERP)
 }
 
 // ═══ COBRANZA ═══
@@ -242,7 +321,16 @@ model Cobranza {
   erpSynced     Boolean         @default(false)
   createdAt     DateTime        @default(now())
 
-  medios        CobranzaMedio[]
+  // Campos ERP
+  horaInicio      String?   // HORA_INICIO (hhmmss)
+  horaFin         String?   // HORA_FIN
+  numeroRecibo    String?   // NRO_RECIBO
+  latitud         Float?    // GPS al cobrar
+  longitud        Float?    // GPS al cobrar
+  codigoVendedor  String?   // COD_VENDEDOR del ERP
+
+  medios          CobranzaMedio[]
+  imputaciones    CobranzaImputacion[]
 }
 
 model CobranzaMedio {
@@ -253,6 +341,32 @@ model CobranzaMedio {
   monto       Float
   moneda      String   @default("ARS")
   datos       Json     // campos específicos del medio
+
+  // Campos ERP explícitos (además del JSON)
+  codigoMedioPago     String?   // COD_MEDIO_PAGO del ERP
+  numeroReferencia    String?   // NRO_REFERENCIA_PAGO
+  plazaCheque         String?   // PLAZA_CHEQUE
+  fechaEmision        DateTime? // FECHA_EMISION del cheque
+  fechaVencimiento    DateTime? // FECHA_VTO del cheque
+  cotizacion          Float     @default(1)  // tipo de cambio
+  cuitAcreedor        String?   // CUIT del librador del cheque
+  titularTarjeta      String?   // TITULAR_TARJETA
+  codigoAutorizacion  String?   // COD_AUTORIZA_TARJETA
+  codigoLote          String?   // COD_LOTE
+  cuotas              Int?      // CUOTAS tarjeta
+  numeroCupon         String?   // NRO_CUPON
+}
+
+model CobranzaImputacion {
+  id                Int      @id @default(autoincrement())
+  cobranzaId        String
+  cobranza          Cobranza @relation(fields: [cobranzaId], references: [id])
+  tipoComprobante   String   // FAC, NC, ND
+  sucursal          String   // 0001, 0003
+  numeroComprobante String   // 00008193
+  importeCobrado    Float    // monto que se aplicó a este comprobante
+  numeroCuota       Int      @default(1)
+  letraComprobante  String?  // A, B, C, X
 }
 
 // ═══ CUENTA CORRIENTE ═══
@@ -272,6 +386,16 @@ model CuentaCorriente {
   estado          String   @default("pendiente")
   erpId           String?
   createdAt       DateTime @default(now())
+
+  // Campos ERP
+  sucursal          String?   // SUCURSAL (punto de venta)
+  tipoLetra         String?   // TIPO_LETRA (A, B, C, X)
+  cuotas            Int       @default(1)
+  vendedorId        String?   // NRO_VENDEDOR
+  importeCobrado    Float     @default(0)  // IMP_COBRADO (lo que ya se cobró)
+  importeFactura    Float     @default(0)  // IMP_FACTURA (monto original)
+  saldoComprobante  Float     @default(0)  // SALDO_CMPTE
+  codigoEstado      String?
 }
 
 // ═══ JORNADAS Y VISITAS ═══
@@ -315,6 +439,13 @@ model Visita {
   latitud     Float?
   longitud    Float?
   appLocalId  String?
+
+  // Campos ERP
+  codigoZona        String?   // NRO_ZONA
+  codigoNoCompra    String?   // COD_NO_COMPRA (código del motivo)
+  horaRegistro      String?   // hora separada de la fecha (hhmmss)
+  codigoVendedor    String?   // código del vendedor en el ERP
+  codigoCliente     String?   // código del cliente en el ERP (para el export)
 }
 
 // ═══ GPS ═══
@@ -350,6 +481,9 @@ model RutaCliente {
   ruta      Ruta   @relation(fields: [rutaId], references: [id])
   clienteId String
   orden     Int    @default(0)
+
+  // Campos ERP
+  horaVisita  String?   // HORAVISITA (hora sugerida)
 }
 
 // ═══ DEVOLUCIONES ═══
@@ -428,24 +562,39 @@ model PrecioCliente {
 // ═══ CATÁLOGOS ═══
 
 model CondicionVenta {
-  id          String   @id @default(uuid())
-  tenantId    String
-  codigo      String
-  nombre      String
-  diasPlazo   Int      @default(0)
-  activo      Boolean  @default(true)
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  tenantId      String
+  codigo        String
+  nombre        String
+  diasPlazo     Int       @default(0)
+  activo        Boolean   @default(true)
+  updatedAt     DateTime  @updatedAt
+
+  // Campos ERP
+  descripcion   String?
+  moneda        String    @default("ARS")
+  recargo       Float     @default(0)     // %RECARGO
+  bonificacion  Float     @default(0)     // %BONIFICACION
+  contado       Float     @default(0)     // %CONTADO (descuento por contado)
+  observacion   String?
+  ventaFija     Boolean   @default(false) // VTA_FIJA
+  fechaVto      DateTime?                 // FECHA_VTO
+  limiteCredito Float     @default(0)     // LIMITE_CREDITO default de esta condición
+  codigoEstado  String?
 
   @@unique([tenantId, codigo])
 }
 
 model MotivoNoCompra {
-  id          String   @id @default(uuid())
-  tenantId    String
-  codigo      String
-  descripcion String
-  activo      Boolean  @default(true)
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  tenantId      String
+  codigo        String
+  descripcion   String
+  activo        Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+
+  // Campos ERP
+  codigoEstado  String?
 
   @@unique([tenantId, codigo])
 }
@@ -523,6 +672,114 @@ model ImportLog {
   errorDetail Json?    // array de { row, error, data }
   mapping     Json?    // mapping usado en la importación
   createdAt   DateTime @default(now())
+}
+
+// ═══ MAPEO GUARDADO (IA + manual) ═══
+
+model MappingGuardado {
+  id               String   @id @default(uuid())
+  tenantId         String
+  entityType       String
+  nombre           String
+  columnasArchivo  Json     // array de strings
+  huella           String   // sha256 de columnas ordenadas
+  mapping          Json     // { campoSistema: "columnaArchivo" }
+  defaultValues    Json?
+  opciones         Json?
+  vecesUsado       Int      @default(1)
+  creadoPorIA      Boolean  @default(true)
+  confirmado       Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, entityType, huella])
+}
+
+// ═══ INTERCAMBIO ERP (archivos TXT/CSV) ═══
+
+model IntercambioConfig {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nombre    String   // "Configuración Tango", "Config SAP", etc.
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  archivos ArchivoConfig[]
+}
+
+model ArchivoConfig {
+  id              String             @id @default(uuid())
+  intercambioId   String
+  intercambio     IntercambioConfig  @relation(fields: [intercambioId], references: [id], onDelete: Cascade)
+
+  direccion       String   // "import" o "export"
+  nombre          String   // "Articulos", "Cabecera Pedidos", etc.
+  nombreArchivo   String   // "ARTICULOS.TXT", "CabeceraPedidos.txt"
+
+  // Qué entidad del sistema mapea
+  entidad         String   // productos, clientes, clientesTelefono, condicionesVenta,
+                           // cuentaCorriente, motivosNoCompra, rutas, vendedores,
+                           // pedidosCabecera, pedidosDetalle, cobranzasCabecera,
+                           // cobranzasDetallePagos, cobranzasDocImputados, excusas
+
+  // Relación padre-hijo (cabecera → detalle)
+  esDetalle       Boolean  @default(false)
+  archivoPadreId  String?
+  campoRelacion   String?  // campo que vincula detalle con cabecera
+
+  // Formato del archivo
+  formatoArchivo  String   @default("txt")     // txt, csv, json, xlsx
+  separador       String   @default(";")       // ; , | \t
+  encoding        String   @default("latin1")  // latin1, utf-8, windows-1252
+  tieneEncabezado Boolean  @default(true)
+  saltarFilas     Int      @default(0)
+  formatoFecha    String   @default("yyyyMMdd")
+  separadorDecimal String  @default(".")
+
+  // Mapeo de columnas (JSON)
+  mapeoColumnas   Json     // import: { campoLocal: "COL_ARCHIVO" }, export: { COL_ERP: "campoLocal" }
+
+  // Para import
+  valoresDefault  Json?
+  actualizarExist Boolean  @default(true)
+  campoUnico      String?  @default("codigo")
+
+  // Para export
+  soloNuevos      Boolean  @default(true)
+  filtroEstado    String?
+
+  orden           Int      @default(0)
+  activo          Boolean  @default(true)
+}
+
+model IntercambioLog {
+  id             String   @id @default(uuid())
+  tenantId       String
+  direccion      String   // "import" o "export"
+  usuario        String
+  estado         String   @default("ok")
+
+  // Detalle por archivo
+  archivos       Json     // [{ nombre, entidad, registros, actualizados, errores }]
+  erroresDetalle Json?
+
+  // Para export: ruta del ZIP generado (para redescargar)
+  archivoZipPath String?
+
+  createdAt      DateTime @default(now())
+}
+
+model ClienteTelefono {
+  id            Int     @id @default(autoincrement())
+  tenantId      String
+  clienteId     String
+  cliente       Cliente @relation(fields: [clienteId], references: [id])
+  tipo          String  @default("telefono") // telefono, celular, fax, whatsapp
+  numero        String
+  contacto      String? // nombre de la persona
+  principal     Boolean @default(false)
+  codigoControl String? // COD_CONTROL del ERP
 }
 
 // ═══ SYNC LOG ═══

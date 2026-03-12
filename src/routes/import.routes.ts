@@ -14,6 +14,7 @@ import {
   getImportHistory,
   ENTITY_TEMPLATES,
 } from '../services/import.service';
+import { autoMap, guardarMapeo } from '../services/ai-mapper.service';
 
 const router = Router();
 
@@ -96,6 +97,63 @@ router.post('/map', async (req: Request, res: Response, next: NextFunction) => {
       options || {},
       req.tenantId!,
       req.user!.id,
+    );
+
+    successResponse(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/import/auto-map ────────────────────────
+// Sugiere un mapeo automático basado en historial o IA
+
+router.post('/auto-map', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { entityType, columns, sampleData } = req.body;
+
+    if (!entityType || !ENTITY_TEMPLATES[entityType]) {
+      throw new ValidationError(`entityType inválido. Use: ${Object.keys(ENTITY_TEMPLATES).join(', ')}`);
+    }
+    if (!Array.isArray(columns) || columns.length === 0) {
+      throw new ValidationError('columns es obligatorio y debe ser un array no vacío');
+    }
+
+    const result = await autoMap(req.tenantId!, entityType, columns, sampleData);
+    successResponse(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/import/save-mapping ───────────────────
+// Guarda un mapeo confirmado para reutilizar
+
+router.post('/save-mapping', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { entityType, nombre, columnasArchivo, mapping, defaultValues, opciones } = req.body;
+
+    if (!entityType || !ENTITY_TEMPLATES[entityType]) {
+      throw new ValidationError(`entityType inválido. Use: ${Object.keys(ENTITY_TEMPLATES).join(', ')}`);
+    }
+    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+      throw new ValidationError('nombre es obligatorio');
+    }
+    if (!Array.isArray(columnasArchivo) || columnasArchivo.length === 0) {
+      throw new ValidationError('columnasArchivo es obligatorio y debe ser un array no vacío');
+    }
+    if (!mapping || typeof mapping !== 'object' || Object.keys(mapping).length === 0) {
+      throw new ValidationError('mapping es obligatorio y debe tener al menos un campo');
+    }
+
+    const result = await guardarMapeo(
+      req.tenantId!,
+      entityType,
+      nombre.trim(),
+      columnasArchivo,
+      mapping,
+      defaultValues,
+      opciones,
     );
 
     successResponse(res, result);

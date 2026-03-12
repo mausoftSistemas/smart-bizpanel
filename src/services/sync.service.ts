@@ -49,6 +49,7 @@ export class SyncService {
         // Si es vendedor, solo sus clientes asignados
         ...(rol === 'vendedor' && vendedorId && { vendedorId }),
       },
+      include: { telefonos: true },
       orderBy: { updatedAt: 'asc' },
     });
 
