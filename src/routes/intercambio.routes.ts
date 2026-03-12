@@ -47,7 +47,7 @@ const upload = multer({
 
 // ─── Middleware ─────────────────────────────────────────
 
-router.use(authMiddleware, tenantMiddleware, requireRole('admin', 'supervisor'));
+router.use(authMiddleware, tenantMiddleware, requireRole('admin', 'supervisor', 'operador'));
 
 // ═══ IMPORT (SUBIDA) ═══════════════════════════════════
 
@@ -146,7 +146,7 @@ router.post('/export/generate', async (req: Request, res: Response, next: NextFu
       throw new ValidationError('entidades es obligatorio. Use: pedidos, cobranzas, excusas');
     }
 
-    const validEntities = ['pedidos', 'cobranzas', 'excusas'];
+    const validEntities = ['pedidos', 'cobranzas', 'excusas', 'rendiciones', 'presupuestos'];
     for (const e of entidades) {
       if (!validEntities.includes(e)) {
         throw new ValidationError(`Entidad no válida: ${e}. Use: ${validEntities.join(', ')}`);
@@ -201,7 +201,9 @@ router.get('/export/history', async (req: Request, res: Response, next: NextFunc
   }
 });
 
-// ═══ CONFIG ════════════════════════════════════════════
+// ═══ CONFIG (solo admin/supervisor) ═══════════════════
+
+router.use('/config', requireRole('admin', 'supervisor'));
 
 // GET /api/intercambio/config
 router.get('/config', async (req: Request, res: Response, next: NextFunction) => {

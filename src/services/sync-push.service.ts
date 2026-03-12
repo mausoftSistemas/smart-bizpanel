@@ -169,6 +169,65 @@ interface PushGpsInput {
   bateria?: number;
 }
 
+interface PushRendicionInput {
+  localId: string;
+  vendedorId: string;
+  jornadaId?: string;
+  fecha: string;
+  estado?: string;
+  detalleBilletes: Record<string, number>;
+  totalEfectivo: number;
+  totalCheques?: number;
+  cantidadCheques?: number;
+  totalTransferencias?: number;
+  totalBilleteras?: number;
+  totalRetenciones?: number;
+  totalTarjetas?: number;
+  totalMercadoPago?: number;
+  totalRecaudado: number;
+  totalEsperado: number;
+  diferencia: number;
+  observaciones?: string;
+  cheques?: {
+    banco: string;
+    numero: string;
+    monto: number;
+    fechaCobro?: string;
+    plaza?: string;
+    cuitLibrador?: string;
+  }[];
+}
+
+interface PushPresupuestoInput {
+  localId: string;
+  clienteId: string;
+  vendedorId: string;
+  fecha: string;
+  vigenciaHasta?: string;
+  total: number;
+  observaciones?: string;
+  items: {
+    productoId: string;
+    productoCodigo: string;
+    productoNombre: string;
+    cantidad: number;
+    unidadTipo?: string;
+    precioUnitario: number;
+    descuentoPorcentaje?: number;
+    subtotal: number;
+  }[];
+}
+
+interface PushFormularioRespuestaInput {
+  localId: string;
+  formularioId: string;
+  vendedorId: string;
+  clienteId?: string;
+  visitaId?: string;
+  respuestas: Record<string, unknown>;
+  timestamp: string;
+}
+
 interface PushAllInput {
   pedidos?: PushPedidoInput[];
   cobranzas?: PushCobranzaInput[];
@@ -176,6 +235,9 @@ interface PushAllInput {
   jornadas?: PushJornadaInput[];
   devoluciones?: PushDevolucionInput[];
   gps?: PushGpsInput[];
+  rendiciones?: PushRendicionInput[];
+  presupuestos?: PushPresupuestoInput[];
+  formularios?: PushFormularioRespuestaInput[];
 }
 
 // ─── Servicio ───────────────────────────────────────────────
@@ -511,6 +573,157 @@ export class SyncPushService {
     };
   }
 
+  // ─── RENDICIONES ─────────────────────────────────────────
+
+  async pushRendiciones(tenantId: string, items: PushRendicionInput[]) {
+    const results: PushResult[] = [];
+
+    for (const item of items) {
+      try {
+        const existing = await prisma.rendicion.findFirst({
+          where: { tenantId, appLocalId: item.localId },
+        });
+
+        if (existing) {
+          results.push({ localId: item.localId, serverId: existing.id, status: 'already_exists' });
+          continue;
+        }
+
+        const rendicion = await prisma.rendicion.create({
+          data: {
+            tenantId,
+            vendedorId: item.vendedorId,
+            jornadaId: item.jornadaId,
+            fecha: new Date(item.fecha),
+            estado: item.estado || 'pendiente',
+            detalleBilletes: item.detalleBilletes as Prisma.InputJsonValue,
+            totalEfectivo: item.totalEfectivo,
+            totalCheques: item.totalCheques || 0,
+            cantidadCheques: item.cantidadCheques || 0,
+            totalTransferencias: item.totalTransferencias || 0,
+            totalBilleteras: item.totalBilleteras || 0,
+            totalRetenciones: item.totalRetenciones || 0,
+            totalTarjetas: item.totalTarjetas || 0,
+            totalMercadoPago: item.totalMercadoPago || 0,
+            totalRecaudado: item.totalRecaudado,
+            totalEsperado: item.totalEsperado,
+            diferencia: item.diferencia,
+            observaciones: item.observaciones,
+            appLocalId: item.localId,
+            ...(item.cheques?.length && {
+              cheques: {
+                create: item.cheques.map((ch) => ({
+                  banco: ch.banco,
+                  numero: ch.numero,
+                  monto: ch.monto,
+                  fechaCobro: ch.fechaCobro ? new Date(ch.fechaCobro) : undefined,
+                  plaza: ch.plaza,
+                  cuitLibrador: ch.cuitLibrador,
+                })),
+              },
+            }),
+          },
+        });
+
+        results.push({ localId: item.localId, serverId: rendicion.id, status: 'created' });
+      } catch (err) {
+        logger.error(`Push rendicion ${item.localId} failed`, err);
+        results.push({ localId: item.localId, serverId: null, status: 'error', error: (err as Error).message });
+      }
+    }
+
+    return pushResponse(results);
+  }
+
+  // ─── PRESUPUESTOS ──────────────────────────────────────
+
+  async pushPresupuestos(tenantId: string, items: PushPresupuestoInput[]) {
+    const results: PushResult[] = [];
+
+    for (const item of items) {
+      try {
+        const existing = await prisma.presupuesto.findFirst({
+          where: { tenantId, appLocalId: item.localId },
+        });
+
+        if (existing) {
+          results.push({ localId: item.localId, serverId: existing.id, status: 'already_exists' });
+          continue;
+        }
+
+        const presupuesto = await prisma.presupuesto.create({
+          data: {
+            tenantId,
+            clienteId: item.clienteId,
+            vendedorId: item.vendedorId,
+            fecha: new Date(item.fecha),
+            vigenciaHasta: item.vigenciaHasta ? new Date(item.vigenciaHasta) : undefined,
+            total: item.total,
+            observaciones: item.observaciones,
+            appLocalId: item.localId,
+            items: {
+              create: item.items.map((i) => ({
+                productoId: i.productoId,
+                productoCodigo: i.productoCodigo,
+                productoNombre: i.productoNombre,
+                cantidad: i.cantidad,
+                unidadTipo: i.unidadTipo || 'unidad',
+                precioUnitario: i.precioUnitario,
+                descuentoPorcentaje: i.descuentoPorcentaje || 0,
+                subtotal: i.subtotal,
+              })),
+            },
+          },
+        });
+
+        results.push({ localId: item.localId, serverId: presupuesto.id, status: 'created' });
+      } catch (err) {
+        logger.error(`Push presupuesto ${item.localId} failed`, err);
+        results.push({ localId: item.localId, serverId: null, status: 'error', error: (err as Error).message });
+      }
+    }
+
+    return pushResponse(results);
+  }
+
+  // ─── FORMULARIOS (respuestas) ──────────────────────────
+
+  async pushFormularioRespuestas(tenantId: string, items: PushFormularioRespuestaInput[]) {
+    const results: PushResult[] = [];
+
+    for (const item of items) {
+      try {
+        const existing = await prisma.formularioRespuesta.findFirst({
+          where: { appLocalId: item.localId },
+        });
+
+        if (existing) {
+          results.push({ localId: item.localId, serverId: existing.id, status: 'already_exists' });
+          continue;
+        }
+
+        const respuesta = await prisma.formularioRespuesta.create({
+          data: {
+            formularioId: item.formularioId,
+            vendedorId: item.vendedorId,
+            clienteId: item.clienteId,
+            visitaId: item.visitaId,
+            respuestas: item.respuestas as Prisma.InputJsonValue,
+            timestamp: new Date(item.timestamp),
+            appLocalId: item.localId,
+          },
+        });
+
+        results.push({ localId: item.localId, serverId: respuesta.id, status: 'created' });
+      } catch (err) {
+        logger.error(`Push formulario respuesta ${item.localId} failed`, err);
+        results.push({ localId: item.localId, serverId: null, status: 'error', error: (err as Error).message });
+      }
+    }
+
+    return pushResponse(results);
+  }
+
   // ─── PUSH ALL (transacción completa) ─────────────────────
 
   async pushAll(tenantId: string, userId: string, input: PushAllInput) {
@@ -556,6 +769,24 @@ export class SyncPushService {
       if (input.gps?.length) {
         response.gps = await this.pushGps(input.gps);
         totalRecords += input.gps.length;
+      }
+
+      // Rendiciones
+      if (input.rendiciones?.length) {
+        response.rendiciones = await this.pushRendiciones(tenantId, input.rendiciones);
+        totalRecords += input.rendiciones.length;
+      }
+
+      // Presupuestos
+      if (input.presupuestos?.length) {
+        response.presupuestos = await this.pushPresupuestos(tenantId, input.presupuestos);
+        totalRecords += input.presupuestos.length;
+      }
+
+      // Formularios (respuestas)
+      if (input.formularios?.length) {
+        response.formularios = await this.pushFormularioRespuestas(tenantId, input.formularios);
+        totalRecords += input.formularios.length;
       }
 
       await prisma.syncLog.update({

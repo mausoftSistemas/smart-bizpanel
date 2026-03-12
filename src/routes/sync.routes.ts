@@ -1,13 +1,47 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { PrismaClient } from '@prisma/client';
 import { SyncService } from '../services/sync.service';
 import { SyncPushService } from '../services/sync-push.service';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 const router = Router();
 const syncService = new SyncService();
 const pushService = new SyncPushService();
+const prisma = new PrismaClient();
+
+// ─── Multer config (fotos y firmas) ──────────────────
+const uploadsDir = path.join(process.cwd(), 'uploads');
+
+const fileStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const tenantId = req.tenantId || 'unknown';
+    const tipo = req.path.includes('/fotos') ? 'fotos' : 'firmas';
+    const dir = path.join(uploadsDir, tenantId, tipo);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+const fileUpload = multer({
+  storage: fileStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new ValidationError(`Extension no permitida: ${ext}`));
+  },
+});
 
 router.use(authMiddleware, tenantMiddleware);
 
@@ -230,6 +264,150 @@ router.post('/push/all', async (req: Request, res: Response, next: NextFunction)
   try {
     const result = await pushService.pushAll(req.tenantId!, req.user!.id, req.body);
     res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PULL: Formularios ───────────────────────────────────────
+// GET /api/sync/pull/formularios
+router.get('/pull/formularios', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await syncService.pullFormularios(req.tenantId!);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PULL: Sugerencias de venta ──────────────────────────────
+// GET /api/sync/pull/sugerencias
+router.get('/pull/sugerencias', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const vendedorId = (req.query.vendedorId as string) || req.user!.id;
+    const result = await syncService.pullSugerencias(req.tenantId!, vendedorId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUSH: Rendiciones ───────────────────────────────────────
+// POST /api/sync/push/rendiciones
+router.post('/push/rendiciones', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pushService.pushRendiciones(req.tenantId!, req.body.items || []);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUSH: Presupuestos ─────────────────────────────────────
+// POST /api/sync/push/presupuestos
+router.post('/push/presupuestos', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pushService.pushPresupuestos(req.tenantId!, req.body.items || []);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUSH: Formularios (respuestas) ─────────────────────────
+// POST /api/sync/push/formularios
+router.post('/push/formularios', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pushService.pushFormularioRespuestas(req.tenantId!, req.body.items || []);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUSH: Fotos (multipart) ────────────────────────────────
+// POST /api/sync/push/fotos
+router.post('/push/fotos', fileUpload.array('fotos', 20), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) throw new ValidationError('No se recibieron archivos');
+
+    const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : [];
+    const results = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const meta = metadata[i] || {};
+      const fotoUrl = `/uploads/${req.tenantId}/fotos/${file.filename}`;
+
+      try {
+        const foto = await prisma.fotoEvidencia.create({
+          data: {
+            tenantId: req.tenantId!,
+            vendedorId: meta.vendedorId || req.user!.id,
+            clienteId: meta.clienteId,
+            visitaId: meta.visitaId,
+            pedidoId: meta.pedidoId,
+            tipo: meta.tipo || 'comprobante',
+            fotoUrl,
+            latitud: meta.latitud,
+            longitud: meta.longitud,
+            timestamp: meta.timestamp ? new Date(meta.timestamp) : new Date(),
+            appLocalId: meta.localId,
+          },
+        });
+        results.push({ localId: meta.localId, serverId: foto.id, status: 'created', url: fotoUrl });
+      } catch (err) {
+        logger.error(`Push foto failed`, err);
+        results.push({ localId: meta.localId, serverId: null, status: 'error', error: (err as Error).message });
+      }
+    }
+
+    res.json({ ok: true, results, syncTimestamp: new Date().toISOString() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUSH: Firmas (multipart) ───────────────────────────────
+// POST /api/sync/push/firmas
+router.post('/push/firmas', fileUpload.array('firmas', 10), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) throw new ValidationError('No se recibieron archivos');
+
+    const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : [];
+    const results = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const meta = metadata[i] || {};
+      const firmaUrl = `/uploads/${req.tenantId}/firmas/${file.filename}`;
+
+      try {
+        const firma = await prisma.firma.create({
+          data: {
+            tenantId: req.tenantId!,
+            vendedorId: meta.vendedorId || req.user!.id,
+            clienteId: meta.clienteId,
+            pedidoId: meta.pedidoId,
+            cobranzaId: meta.cobranzaId,
+            devolucionId: meta.devolucionId,
+            tipo: meta.tipo || 'conformidad',
+            firmaUrl,
+            firmante: meta.firmante,
+            timestamp: meta.timestamp ? new Date(meta.timestamp) : new Date(),
+            appLocalId: meta.localId,
+          },
+        });
+        results.push({ localId: meta.localId, serverId: firma.id, status: 'created', url: firmaUrl });
+      } catch (err) {
+        logger.error(`Push firma failed`, err);
+        results.push({ localId: meta.localId, serverId: null, status: 'error', error: (err as Error).message });
+      }
+    }
+
+    res.json({ ok: true, results, syncTimestamp: new Date().toISOString() });
   } catch (err) {
     next(err);
   }

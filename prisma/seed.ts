@@ -67,6 +67,14 @@ export async function seedDatabase(db: PrismaClient) {
     create: { tenantId: tenant.id, email: 'vendedor@demo.com', passwordHash: vendedorHash, nombre: 'Juan Vendedor', rol: 'vendedor' },
   });
 
+  // Crear tesorero
+  const tesoreroHash = await bcrypt.hash('tesorero123', 10);
+  await db.user.upsert({
+    where: { tenantId_email: { tenantId: tenant.id, email: 'tesorero@demo.com' } },
+    update: {},
+    create: { tenantId: tenant.id, email: 'tesorero@demo.com', passwordHash: tesoreroHash, nombre: 'Laura Tesorera', rol: 'tesorero' },
+  });
+
   // Crear productos
   const productosData = [
     { codigo: 'PROD001', nombre: 'Coca-Cola 500ml', precioLista: 1500, categoria: 'Bebidas', stockUnidad: 200 },
@@ -238,6 +246,7 @@ export async function seedDatabase(db: PrismaClient) {
   console.log('  admin@demo.com / admin123 (rol: admin)');
   console.log('  supervisor@demo.com / supervisor123 (rol: supervisor)');
   console.log('  vendedor@demo.com / vendedor123 (rol: vendedor)');
+  console.log('  tesorero@demo.com / tesorero123 (rol: tesorero)');
   console.log('  Tenant código: demo');
 }
 

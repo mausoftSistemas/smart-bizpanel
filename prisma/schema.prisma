@@ -148,6 +148,8 @@ model User {
   codigoPersona   String?   // PERSONA del ERP
   codigoZona      String?   // COD_ZONA
 
+  passwordTemp  Boolean  @default(true)  // forzar cambio en primer login
+
   pedidos       Pedido[]
   cobranzas     Cobranza[]
   jornadas      Jornada[]
@@ -256,11 +258,14 @@ model Pedido {
   fecha           DateTime
   estado          String       @default("pendiente")
   tipoComprobante String?
+  numero          Int?         // número secuencial local
   subtotal        Float        @default(0)
   descuentoGlobal Float        @default(0)
+  descuentoMonto  Float        @default(0)  // monto absoluto de descuento
   total           Float        @default(0)
   observaciones   String?
   jornadaId       String?
+  vendedorOriginalId String?   // para ruta espejo (vendedor ausente)
   appLocalId      String?      // UUID que mandó la app
   erpId           String?      // ID en el ERP
   erpSynced       Boolean      @default(false)
@@ -294,6 +299,7 @@ model PedidoItem {
   unidadTipo          String  @default("unidad")
   precioUnitario      Float
   descuentoPorcentaje Float   @default(0)
+  tipoVenta           String  @default("venta") // venta, promocion, cambio, sin_cargo
   subtotal            Float
 
   // Campos ERP
@@ -316,10 +322,13 @@ model Cobranza {
   fecha         DateTime
   total         Float
   estado        String          @default("confirmado")
+  jornadaId     String?
+  observaciones String?
   appLocalId    String?
   erpId         String?
   erpSynced     Boolean         @default(false)
   createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   // Campos ERP
   horaInicio      String?   // HORA_INICIO (hhmmss)
@@ -341,6 +350,8 @@ model CobranzaMedio {
   monto       Float
   moneda      String   @default("ARS")
   datos       Json     // campos específicos del medio
+  fotoComprobante   String?   // URL de la foto del comprobante
+  estado            String    @default("pendiente") // pendiente, confirmado, rechazado, acreditado
 
   // Campos ERP explícitos (además del JSON)
   codigoMedioPago     String?   // COD_MEDIO_PAGO del ERP
@@ -417,7 +428,11 @@ model Jornada {
   clientesVisitados Int      @default(0)
   totalVendido      Float    @default(0)
   totalCobrado      Float    @default(0)
+  totalDevoluciones Float    @default(0)
+  cantidadNoCompras Int      @default(0)
   kmRecorridos      Float    @default(0)
+  fueTardanza       Boolean  @default(false)
+  observaciones     String?
   appLocalId        String?
 
   visitas           Visita[]
@@ -438,6 +453,8 @@ model Visita {
   monto       Float    @default(0)
   latitud     Float?
   longitud    Float?
+  motivoNoCompraId String?  // referencia al motivo
+  observaciones    String?
   appLocalId  String?
 
   // Campos ERP
@@ -780,6 +797,162 @@ model ClienteTelefono {
   contacto      String? // nombre de la persona
   principal     Boolean @default(false)
   codigoControl String? // COD_CONTROL del ERP
+}
+
+// ═══ RENDICIONES (TESORERÍA) ═══
+
+model Rendicion {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  vendedorId          String
+  jornadaId           String?
+  fecha               DateTime
+  estado              String   @default("pendiente") // pendiente, entregado, aprobado, con_diferencia, rechazado
+
+  detalleBilletes     Json     // JSON del arqueo: {"10000": 5, "5000": 3, ...}
+  totalEfectivo       Float    @default(0)
+
+  totalCheques        Float    @default(0)
+  cantidadCheques     Int      @default(0)
+  totalTransferencias Float    @default(0)
+  totalBilleteras     Float    @default(0)
+  totalRetenciones    Float    @default(0)
+  totalTarjetas       Float    @default(0)
+  totalMercadoPago    Float    @default(0)
+
+  totalRecaudado      Float    @default(0)
+  totalEsperado       Float    @default(0)
+  diferencia          Float    @default(0)
+
+  observaciones       String?
+  aprobadoPor         String?  // userId del tesorero
+  motivoRechazo       String?
+  fechaAprobacion     DateTime?
+
+  appLocalId          String?
+  createdAt           DateTime @default(now())
+
+  cheques             RendicionCheque[]
+}
+
+model RendicionCheque {
+  id              Int       @id @default(autoincrement())
+  rendicionId     String
+  rendicion       Rendicion @relation(fields: [rendicionId], references: [id], onDelete: Cascade)
+  banco           String
+  numero          String
+  monto           Float
+  fechaCobro      DateTime?
+  plaza           String?
+  cuitLibrador    String?
+  entregado       Boolean   @default(false)  // tesorero marca que lo recibió
+  recibidoPor     String?
+  fechaRecepcion  DateTime?
+}
+
+// ═══ PRESUPUESTOS ═══
+
+model Presupuesto {
+  id                String    @id @default(uuid())
+  tenantId          String
+  clienteId         String
+  vendedorId        String
+  fecha             DateTime
+  vigenciaHasta     DateTime?
+  estado            String    @default("vigente") // vigente, vencido, convertido, anulado
+  pedidoGeneradoId  String?
+  total             Float     @default(0)
+  observaciones     String?
+  appLocalId        String?
+  createdAt         DateTime  @default(now())
+
+  items             PresupuestoItem[]
+}
+
+model PresupuestoItem {
+  id                  Int          @id @default(autoincrement())
+  presupuestoId       String
+  presupuesto         Presupuesto  @relation(fields: [presupuestoId], references: [id], onDelete: Cascade)
+  productoId          String
+  productoCodigo      String
+  productoNombre      String
+  cantidad            Float
+  unidadTipo          String       @default("unidad")
+  precioUnitario      Float
+  descuentoPorcentaje Float        @default(0)
+  subtotal            Float
+}
+
+// ═══ FOTOS DE EVIDENCIA ═══
+
+model FotoEvidencia {
+  id          String   @id @default(uuid())
+  tenantId    String
+  vendedorId  String
+  clienteId   String?
+  visitaId    String?
+  pedidoId    String?
+  tipo        String   // gondola, exhibidor, fachada, competencia, producto, comprobante
+  fotoUrl     String   // URL del archivo en storage
+  latitud     Float?
+  longitud    Float?
+  timestamp   DateTime
+  appLocalId  String?
+}
+
+// ═══ FIRMAS ═══
+
+model Firma {
+  id           String   @id @default(uuid())
+  tenantId     String
+  vendedorId   String
+  clienteId    String
+  pedidoId     String?
+  cobranzaId   String?
+  devolucionId String?
+  tipo         String   // pedido, cobranza, devolucion, conformidad
+  firmaUrl     String   // URL del archivo en storage
+  firmante     String?  // nombre de quien firmó
+  timestamp    DateTime
+  appLocalId   String?
+}
+
+// ═══ FORMULARIOS DINÁMICOS ═══
+
+model Formulario {
+  id          String   @id @default(uuid())
+  tenantId    String
+  nombre      String
+  descripcion String?
+  campos      Json     // definición de campos del formulario
+  esActivo    Boolean  @default(true)
+
+  respuestas  FormularioRespuesta[]
+}
+
+model FormularioRespuesta {
+  id            String     @id @default(uuid())
+  formularioId  String
+  formulario    Formulario @relation(fields: [formularioId], references: [id])
+  vendedorId    String
+  clienteId     String?
+  visitaId      String?
+  respuestas    Json       // las respuestas completadas
+  timestamp     DateTime
+  appLocalId    String?
+}
+
+// ═══ SUGERENCIAS DE VENTA ═══
+
+model SugerenciaVenta {
+  id          String  @id @default(uuid())
+  tenantId    String
+  clienteId   String
+  productoId  String
+  tipo        String  // recurrente, complementario, nuevo, reposicion
+  prioridad   Int     @default(0)
+  motivo      String?
+  esActivo    Boolean @default(true)
 }
 
 // ═══ SYNC LOG ═══

@@ -1,7 +1,9 @@
 import express from 'express';
 import path from 'path';
+import jwt from 'jsonwebtoken';
 import { corsMiddleware, helmetMiddleware, rateLimitMiddleware } from './middleware/security.middleware';
 import { errorHandler } from './middleware/error.middleware';
+import { env } from './config/env';
 
 import authRoutes from './routes/auth.routes';
 import syncRoutes from './routes/sync.routes';
@@ -18,6 +20,7 @@ import webhookRoutes from './routes/webhook.routes';
 import importRoutes from './routes/import.routes';
 import superAdminRoutes from './routes/super-admin.routes';
 import intercambioRoutes from './routes/intercambio.routes';
+import tesoreriaRoutes from './routes/tesoreria.routes';
 
 const app = express();
 
@@ -36,6 +39,36 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
+// ─── Operador restriction ────────────────────────────────────
+// El rol "operador" solo puede acceder a /api/auth y /api/intercambio
+app.use('/api', (req, res, next) => {
+  // Rutas públicas (login, etc.) y rutas de intercambio siempre pasan
+  if (req.path.startsWith('/auth') || req.path.startsWith('/intercambio')) {
+    return next();
+  }
+  // Si no hay token todavía, dejar que el middleware de auth lo maneje
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return next();
+  try {
+    const payload = jwt.verify(header.slice(7), env.JWT_SECRET) as { rol?: string };
+    if (payload.rol === 'operador') {
+      return res.status(403).json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'El rol operador solo tiene acceso al intercambio de archivos ERP' },
+      });
+    }
+    if (payload.rol === 'tesorero' && !req.path.startsWith('/tesoreria')) {
+      return res.status(403).json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'El rol tesorero solo tiene acceso al módulo de tesorería' },
+      });
+    }
+  } catch {
+    // Token inválido — dejar que authMiddleware lo maneje
+  }
+  next();
+});
+
 // ─── Routes ─────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/sync', syncRoutes);
@@ -52,6 +85,11 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/super', superAdminRoutes);
 app.use('/api/intercambio', intercambioRoutes);
+app.use('/api/tesoreria', tesoreriaRoutes);
+
+// ─── Uploads (fotos, firmas) ─────────────────────────────────
+const uploadsDir = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsDir));
 
 // ─── Frontend SPA ────────────────────────────────────────────
 const webDist = path.join(__dirname, '..', 'web', 'dist');

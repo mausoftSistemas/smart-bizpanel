@@ -21,6 +21,7 @@ interface DataTableProps<T> {
   pageSize?: number
   loading?: boolean
   actions?: React.ReactNode
+  onRowClick?: (row: T) => void
 }
 
 export default function DataTable<T>({
@@ -31,6 +32,7 @@ export default function DataTable<T>({
   pageSize = 20,
   loading,
   actions,
+  onRowClick,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -108,7 +110,7 @@ export default function DataTable<T>({
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                <tr key={row.id} className={cn('border-b border-border last:border-0 hover:bg-muted/30 transition-colors', onRowClick && 'cursor-pointer')} onClick={() => onRowClick?.(row.original)}>
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -383,6 +383,366 @@ router.delete('/politicas/:id', async (req: Request, res: Response, next: NextFu
 });
 
 // ═══════════════════════════════════════════════════════════
+// CONDICIONES DE VENTA (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.get('/condiciones-venta', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await prisma.condicionVenta.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { nombre: 'asc' },
+    });
+    successResponse(res, data);
+  } catch (err) { next(err); }
+});
+
+router.post('/condiciones-venta', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { codigo, nombre, diasPlazo, recargo, bonificacion, contado } = req.body;
+    if (!codigo || !nombre) throw new ValidationError('codigo y nombre son requeridos');
+    const item = await prisma.condicionVenta.create({
+      data: {
+        tenantId: req.tenantId!, codigo, nombre,
+        diasPlazo: diasPlazo ?? 0, recargo: recargo ?? 0,
+        bonificacion: bonificacion ?? 0, contado: contado ?? 0,
+      },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/condiciones-venta/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.condicionVenta.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Condicion de venta');
+    const { codigo, nombre, diasPlazo, recargo, bonificacion, contado, activo } = req.body;
+    const item = await prisma.condicionVenta.update({
+      where: { id },
+      data: {
+        ...(codigo !== undefined && { codigo }),
+        ...(nombre !== undefined && { nombre }),
+        ...(diasPlazo !== undefined && { diasPlazo }),
+        ...(recargo !== undefined && { recargo }),
+        ...(bonificacion !== undefined && { bonificacion }),
+        ...(contado !== undefined && { contado }),
+        ...(activo !== undefined && { activo }),
+      },
+    });
+    successResponse(res, item);
+  } catch (err) { next(err); }
+});
+
+router.delete('/condiciones-venta/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.condicionVenta.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Condicion de venta');
+    await prisma.condicionVenta.update({ where: { id }, data: { activo: false } });
+    successResponse(res, { id, activo: false });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// MOTIVOS NO COMPRA (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.get('/motivos-no-compra', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await prisma.motivoNoCompra.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { descripcion: 'asc' },
+    });
+    successResponse(res, data);
+  } catch (err) { next(err); }
+});
+
+router.post('/motivos-no-compra', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { codigo, descripcion } = req.body;
+    if (!codigo || !descripcion) throw new ValidationError('codigo y descripcion son requeridos');
+    const item = await prisma.motivoNoCompra.create({
+      data: { tenantId: req.tenantId!, codigo, descripcion },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/motivos-no-compra/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.motivoNoCompra.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Motivo no compra');
+    const { codigo, descripcion, activo } = req.body;
+    const item = await prisma.motivoNoCompra.update({
+      where: { id },
+      data: {
+        ...(codigo !== undefined && { codigo }),
+        ...(descripcion !== undefined && { descripcion }),
+        ...(activo !== undefined && { activo }),
+      },
+    });
+    successResponse(res, item);
+  } catch (err) { next(err); }
+});
+
+router.delete('/motivos-no-compra/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.motivoNoCompra.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Motivo no compra');
+    await prisma.motivoNoCompra.update({ where: { id }, data: { activo: false } });
+    successResponse(res, { id, activo: false });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// BILLETERAS (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.get('/billeteras', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await prisma.billetera.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { nombre: 'asc' },
+    });
+    successResponse(res, data);
+  } catch (err) { next(err); }
+});
+
+router.post('/billeteras', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { nombre, alias, cbu } = req.body;
+    if (!nombre) throw new ValidationError('nombre es requerido');
+    const item = await prisma.billetera.create({
+      data: { tenantId: req.tenantId!, nombre, alias: alias || null, cbu: cbu || null },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/billeteras/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.billetera.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Billetera');
+    const { nombre, alias, cbu, activo } = req.body;
+    const item = await prisma.billetera.update({
+      where: { id },
+      data: {
+        ...(nombre !== undefined && { nombre }),
+        ...(alias !== undefined && { alias }),
+        ...(cbu !== undefined && { cbu }),
+        ...(activo !== undefined && { activo }),
+      },
+    });
+    successResponse(res, item);
+  } catch (err) { next(err); }
+});
+
+router.delete('/billeteras/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.billetera.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Billetera');
+    await prisma.billetera.update({ where: { id }, data: { activo: false } });
+    successResponse(res, { id, activo: false });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// DENOMINACIONES (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.get('/denominaciones', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await prisma.denominacion.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { valor: 'desc' },
+    });
+    successResponse(res, data);
+  } catch (err) { next(err); }
+});
+
+router.post('/denominaciones', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tipo, valor, moneda } = req.body;
+    if (!tipo || valor === undefined) throw new ValidationError('tipo y valor son requeridos');
+    const item = await prisma.denominacion.create({
+      data: { tenantId: req.tenantId!, tipo, valor, moneda: moneda || 'ARS' },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/denominaciones/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.denominacion.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Denominacion');
+    const { tipo, valor, moneda, activo } = req.body;
+    const item = await prisma.denominacion.update({
+      where: { id },
+      data: {
+        ...(tipo !== undefined && { tipo }),
+        ...(valor !== undefined && { valor }),
+        ...(moneda !== undefined && { moneda }),
+        ...(activo !== undefined && { activo }),
+      },
+    });
+    successResponse(res, item);
+  } catch (err) { next(err); }
+});
+
+router.delete('/denominaciones/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.denominacion.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Denominacion');
+    await prisma.denominacion.update({ where: { id }, data: { activo: false } });
+    successResponse(res, { id, activo: false });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// OBJETIVOS (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.post('/objetivos', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { vendedorId, tipo, nombre, metrica, valorObjetivo, periodoInicio, periodoFin } = req.body;
+    if (!tipo || !nombre || !metrica || !valorObjetivo || !periodoInicio || !periodoFin) {
+      throw new ValidationError('tipo, nombre, metrica, valorObjetivo, periodoInicio y periodoFin son requeridos');
+    }
+    const item = await prisma.objetivo.create({
+      data: {
+        tenantId: req.tenantId!, vendedorId: vendedorId || null,
+        tipo, nombre, metrica, valorObjetivo: parseFloat(valorObjetivo),
+        periodoInicio: new Date(periodoInicio), periodoFin: new Date(periodoFin),
+      },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.put('/objetivos/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.objetivo.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Objetivo');
+    const { vendedorId, tipo, nombre, metrica, valorObjetivo, periodoInicio, periodoFin, activo } = req.body;
+    const item = await prisma.objetivo.update({
+      where: { id },
+      data: {
+        ...(vendedorId !== undefined && { vendedorId: vendedorId || null }),
+        ...(tipo !== undefined && { tipo }),
+        ...(nombre !== undefined && { nombre }),
+        ...(metrica !== undefined && { metrica }),
+        ...(valorObjetivo !== undefined && { valorObjetivo: parseFloat(valorObjetivo) }),
+        ...(periodoInicio !== undefined && { periodoInicio: new Date(periodoInicio) }),
+        ...(periodoFin !== undefined && { periodoFin: new Date(periodoFin) }),
+        ...(activo !== undefined && { activo }),
+      },
+    });
+    successResponse(res, item);
+  } catch (err) { next(err); }
+});
+
+router.delete('/objetivos/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.objetivo.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Objetivo');
+    await prisma.objetivo.update({ where: { id }, data: { activo: false } });
+    successResponse(res, { id, activo: false });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// MENSAJES (CRUD)
+// ═══════════════════════════════════════════════════════════
+
+router.get('/mensajes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await prisma.mensaje.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { createdAt: 'desc' },
+    });
+    // Resolve vendedor names
+    const vendedorIds = [...new Set(data.map(m => m.vendedorId).filter(Boolean))] as string[];
+    const vendedores = vendedorIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: vendedorIds } }, select: { id: true, nombre: true } })
+      : [];
+    const vendedorMap = Object.fromEntries(vendedores.map(v => [v.id, v.nombre]));
+    successResponse(res, data.map(m => ({
+      ...m,
+      vendedorNombre: m.vendedorId ? (vendedorMap[m.vendedorId] || '—') : 'Todos',
+    })));
+  } catch (err) { next(err); }
+});
+
+router.post('/mensajes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { vendedorId, titulo, cuerpo, tipo } = req.body;
+    if (!titulo || !cuerpo) throw new ValidationError('titulo y cuerpo son requeridos');
+    const item = await prisma.mensaje.create({
+      data: {
+        tenantId: req.tenantId!, vendedorId: vendedorId || null,
+        titulo, cuerpo, tipo: tipo || 'info',
+      },
+    });
+    successResponse(res, item, 201);
+  } catch (err) { next(err); }
+});
+
+router.delete('/mensajes/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.mensaje.findFirst({ where: { id, tenantId: req.tenantId! } });
+    if (!existing) throw new NotFoundError('Mensaje');
+    await prisma.mensaje.delete({ where: { id } });
+    successResponse(res, { id, deleted: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// DETALLE PEDIDOS / COBRANZAS
+// ═══════════════════════════════════════════════════════════
+
+router.get('/pedidos/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const pedido = await prisma.pedido.findFirst({
+      where: { id, tenantId: req.tenantId! },
+      include: {
+        items: true,
+        cliente: { select: { id: true, nombre: true, codigo: true, direccion: true, telefono: true } },
+        vendedor: { select: { id: true, nombre: true, email: true } },
+      },
+    });
+    if (!pedido) throw new NotFoundError('Pedido');
+    successResponse(res, pedido);
+  } catch (err) { next(err); }
+});
+
+router.get('/cobranzas/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const cobranza = await prisma.cobranza.findFirst({
+      where: { id, tenantId: req.tenantId! },
+      include: {
+        medios: true,
+        imputaciones: true,
+        cliente: { select: { id: true, nombre: true, codigo: true, direccion: true, telefono: true } },
+        vendedor: { select: { id: true, nombre: true, email: true } },
+      },
+    });
+    if (!cobranza) throw new NotFoundError('Cobranza');
+    successResponse(res, cobranza);
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
 

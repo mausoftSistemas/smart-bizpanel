@@ -23,6 +23,8 @@ const rolColors: Record<string, string> = {
   vendedor: 'bg-green-100 text-green-700',
   deposito: 'bg-orange-100 text-orange-700',
   repartidor: 'bg-teal-100 text-teal-700',
+  operador: 'bg-indigo-100 text-indigo-700',
+  tesorero: 'bg-cyan-100 text-cyan-700',
 }
 
 export default function UsersList() {
@@ -135,8 +137,10 @@ export default function UsersList() {
               <option value="admin">Admin</option>
               <option value="supervisor">Supervisor</option>
               <option value="vendedor">Vendedor</option>
-              <option value="deposito">Depósito</option>
+              <option value="deposito">Deposito</option>
               <option value="repartidor">Repartidor</option>
+              <option value="operador">Operador ERP</option>
+              <option value="tesorero">Tesorero</option>
             </select>
             <div className="sm:col-span-2">
               <button type="submit" disabled={saveMutation.isPending} className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

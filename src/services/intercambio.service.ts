@@ -588,6 +588,8 @@ export interface ExportPreview {
   pedidos: { cabeceras: number; items: number; nuevos: number };
   cobranzas: { cabeceras: number; mediosPago: number; docImputados: number; nuevas: number };
   excusas: { total: number; nuevas: number };
+  rendiciones: { total: number; cheques: number };
+  presupuestos: { cabeceras: number; items: number };
 }
 
 export async function getExportPreview(
@@ -595,7 +597,13 @@ export async function getExportPreview(
   desde: Date,
   hasta: Date,
 ): Promise<ExportPreview> {
-  const [pedidos, pedidosNuevos, items, cobranzas, cobranzasNuevas, medios, excusas, excusasNuevas] = await Promise.all([
+  const [
+    pedidos, pedidosNuevos, items,
+    cobranzas, cobranzasNuevas, medios,
+    excusas, excusasNuevas,
+    rendiciones, rendicionCheques,
+    presupuestos, presupuestoItems,
+  ] = await Promise.all([
     prisma.pedido.count({ where: { tenantId, fecha: { gte: desde, lte: hasta } } }),
     prisma.pedido.count({ where: { tenantId, fecha: { gte: desde, lte: hasta }, erpSynced: false } }),
     prisma.pedidoItem.count({ where: { pedido: { tenantId, fecha: { gte: desde, lte: hasta } } } }),
@@ -604,6 +612,10 @@ export async function getExportPreview(
     prisma.cobranzaMedio.count({ where: { cobranza: { tenantId, fecha: { gte: desde, lte: hasta } } } }),
     prisma.visita.count({ where: { jornada: { tenantId }, tipo: 'no_compra', fechaHora: { gte: desde, lte: hasta } } }),
     prisma.visita.count({ where: { jornada: { tenantId }, tipo: 'no_compra', fechaHora: { gte: desde, lte: hasta } } }),
+    prisma.rendicion.count({ where: { tenantId, fecha: { gte: desde, lte: hasta } } }),
+    prisma.rendicionCheque.count({ where: { rendicion: { tenantId, fecha: { gte: desde, lte: hasta } } } }),
+    prisma.presupuesto.count({ where: { tenantId, fecha: { gte: desde, lte: hasta } } }),
+    prisma.presupuestoItem.count({ where: { presupuesto: { tenantId, fecha: { gte: desde, lte: hasta } } } }),
   ]);
 
   // docImputados: contar CuentaCorriente con recibos en el rango
@@ -615,6 +627,8 @@ export async function getExportPreview(
     pedidos: { cabeceras: pedidos, items, nuevos: pedidosNuevos },
     cobranzas: { cabeceras: cobranzas, mediosPago: medios, docImputados, nuevas: cobranzasNuevas },
     excusas: { total: excusas, nuevas: excusasNuevas },
+    rendiciones: { total: rendiciones, cheques: rendicionCheques },
+    presupuestos: { cabeceras: presupuestos, items: presupuestoItems },
   };
 }
 
@@ -872,6 +886,161 @@ export async function generateExport(
         buffer: generateDefaultExportFile(excData, {
           FECHA: 'fecha', COD_VEN: 'vendedorCodigo', COD_CLI: 'clienteCodigo',
           NOM_CLI: 'clienteNombre', MOTIVO: 'motivo', OBS: 'observaciones',
+        }),
+      });
+    }
+  }
+
+  // ── RENDICIONES ──
+  if (entidades.includes('rendiciones')) {
+    const rendiciones = await prisma.rendicion.findMany({
+      where: {
+        tenantId,
+        fecha: { gte: desde, lte: hasta },
+      },
+      include: { cheques: true },
+      orderBy: { fecha: 'asc' },
+    });
+
+    // Cabecera Rendiciones
+    const rendCabConfig = exportConfigs.find((c) => c.entidad === 'rendicionesCabecera');
+    const rendCabData = rendiciones.map((r) => {
+      const vendedorId = r.vendedorId;
+      return {
+        id: r.id.substring(0, 8).toUpperCase(),
+        fecha: r.fecha,
+        vendedorId,
+        estado: r.estado,
+        totalEfectivo: r.totalEfectivo,
+        totalCheques: r.totalCheques,
+        cantidadCheques: r.cantidadCheques,
+        totalTransferencias: r.totalTransferencias,
+        totalBilleteras: r.totalBilleteras,
+        totalRetenciones: r.totalRetenciones,
+        totalTarjetas: r.totalTarjetas,
+        totalMercadoPago: r.totalMercadoPago,
+        totalRecaudado: r.totalRecaudado,
+        totalEsperado: r.totalEsperado,
+        diferencia: r.diferencia,
+        observaciones: r.observaciones || '',
+      };
+    });
+
+    if (rendCabConfig) {
+      archivos.push({ nombre: rendCabConfig.nombreArchivo, buffer: generateExportFile(rendCabData, rendCabConfig) });
+    } else {
+      archivos.push({
+        nombre: 'Rendiciones.txt',
+        buffer: generateDefaultExportFile(rendCabData, {
+          ID: 'id', FECHA: 'fecha', VENDEDOR: 'vendedorId', ESTADO: 'estado',
+          EFECTIVO: 'totalEfectivo', CHEQUES: 'totalCheques', CANT_CHQ: 'cantidadCheques',
+          TRANSFERENCIAS: 'totalTransferencias', BILLETERAS: 'totalBilleteras',
+          RETENCIONES: 'totalRetenciones', TARJETAS: 'totalTarjetas', MP: 'totalMercadoPago',
+          RECAUDADO: 'totalRecaudado', ESPERADO: 'totalEsperado', DIFERENCIA: 'diferencia',
+          OBS: 'observaciones',
+        }),
+      });
+    }
+
+    // Detalle Cheques Rendición
+    const rendChqConfig = exportConfigs.find((c) => c.entidad === 'rendicionesCheques');
+    const rendChqData = rendiciones.flatMap((r) =>
+      r.cheques.map((ch) => ({
+        rendicionId: r.id.substring(0, 8).toUpperCase(),
+        banco: ch.banco,
+        numero: ch.numero,
+        monto: ch.monto,
+        fechaCobro: ch.fechaCobro,
+        plaza: ch.plaza || '',
+        cuitLibrador: ch.cuitLibrador || '',
+        entregado: ch.entregado ? 'SI' : 'NO',
+      })),
+    );
+
+    if (rendChqConfig) {
+      archivos.push({ nombre: rendChqConfig.nombreArchivo, buffer: generateExportFile(rendChqData, rendChqConfig) });
+    } else {
+      archivos.push({
+        nombre: 'RendicionesCheques.txt',
+        buffer: generateDefaultExportFile(rendChqData, {
+          ID_REND: 'rendicionId', BANCO: 'banco', NUMERO: 'numero', MONTO: 'monto',
+          FECHA_COBRO: 'fechaCobro', PLAZA: 'plaza', CUIT_LIBRADOR: 'cuitLibrador',
+          ENTREGADO: 'entregado',
+        }),
+      });
+    }
+  }
+
+  // ── PRESUPUESTOS ──
+  if (entidades.includes('presupuestos')) {
+    const presupuestos = await prisma.presupuesto.findMany({
+      where: {
+        tenantId,
+        fecha: { gte: desde, lte: hasta },
+      },
+      include: {
+        items: true,
+      },
+      orderBy: { fecha: 'asc' },
+    });
+
+    // Cabecera Presupuestos
+    const presCabConfig = exportConfigs.find((c) => c.entidad === 'presupuestosCabecera');
+    const presCabData: Record<string, unknown>[] = [];
+    for (const p of presupuestos) {
+      const cliente = await prisma.cliente.findFirst({ where: { id: p.clienteId } });
+      const vendedor = await prisma.user.findFirst({ where: { id: p.vendedorId } });
+      presCabData.push({
+        id: p.id.substring(0, 8).toUpperCase(),
+        fecha: p.fecha,
+        vigenciaHasta: p.vigenciaHasta || '',
+        vendedorCodigo: vendedor?.email.split('@')[0] || '',
+        vendedorNombre: vendedor?.nombre || '',
+        clienteCodigo: cliente?.codigo || '',
+        clienteNombre: cliente?.nombre || '',
+        total: p.total,
+        estado: p.estado,
+        observaciones: p.observaciones || '',
+      });
+    }
+
+    if (presCabConfig) {
+      archivos.push({ nombre: presCabConfig.nombreArchivo, buffer: generateExportFile(presCabData, presCabConfig) });
+    } else {
+      archivos.push({
+        nombre: 'CabeceraPresupuestos.txt',
+        buffer: generateDefaultExportFile(presCabData, {
+          ID: 'id', FECHA: 'fecha', VIGENCIA: 'vigenciaHasta', COD_VEN: 'vendedorCodigo',
+          COD_CLI: 'clienteCodigo', NOM_CLI: 'clienteNombre', TOTAL: 'total',
+          ESTADO: 'estado', OBS: 'observaciones',
+        }),
+      });
+    }
+
+    // Detalle Presupuestos
+    const presDetConfig = exportConfigs.find((c) => c.entidad === 'presupuestosDetalle');
+    const presDetData = presupuestos.flatMap((p) =>
+      p.items.map((item) => ({
+        presupuestoId: p.id.substring(0, 8).toUpperCase(),
+        productoCodigo: item.productoCodigo,
+        productoNombre: item.productoNombre,
+        cantidad: item.cantidad,
+        unidadTipo: item.unidadTipo,
+        precioUnitario: item.precioUnitario,
+        descuentoPorcentaje: item.descuentoPorcentaje,
+        subtotal: item.subtotal,
+      })),
+    );
+
+    if (presDetConfig) {
+      archivos.push({ nombre: presDetConfig.nombreArchivo, buffer: generateExportFile(presDetData, presDetConfig) });
+    } else {
+      archivos.push({
+        nombre: 'DetallePresupuestos.txt',
+        buffer: generateDefaultExportFile(presDetData, {
+          ID_PRES: 'presupuestoId', COD_ART: 'productoCodigo', DESCRIPCION: 'productoNombre',
+          CANTIDAD: 'cantidad', UNIDAD: 'unidadTipo', PRECIO: 'precioUnitario',
+          DESC_PORC: 'descuentoPorcentaje', SUBTOTAL: 'subtotal',
         }),
       });
     }

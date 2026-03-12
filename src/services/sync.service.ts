@@ -234,6 +234,34 @@ export class SyncService {
     return pullResponse(data, timestamp);
   }
 
+  async pullFormularios(tenantId: string) {
+    const timestamp = new Date();
+
+    const data = await prisma.formulario.findMany({
+      where: { tenantId, esActivo: true },
+    });
+
+    return pullResponse(data, timestamp);
+  }
+
+  async pullSugerencias(tenantId: string, vendedorId?: string) {
+    const timestamp = new Date();
+
+    // Obtener clientes del vendedor para filtrar sugerencias
+    const where: Record<string, unknown> = { tenantId, esActivo: true };
+    if (vendedorId) {
+      const clienteIds = await prisma.cliente.findMany({
+        where: { tenantId, vendedorId },
+        select: { id: true },
+      });
+      where.clienteId = { in: clienteIds.map((c) => c.id) };
+    }
+
+    const data = await prisma.sugerenciaVenta.findMany({ where });
+
+    return pullResponse(data, timestamp);
+  }
+
   async pullAll(tenantId: string, since?: string, vendedorId?: string, rol?: string) {
     const timestamp = new Date();
 
@@ -248,6 +276,8 @@ export class SyncService {
       politicas,
       config,
       mensajes,
+      formularios,
+      sugerencias,
     ] = await Promise.all([
       this.pullProductos(tenantId, since),
       this.pullClientes(tenantId, since, vendedorId, rol),
@@ -261,6 +291,8 @@ export class SyncService {
       vendedorId
         ? this.pullMensajes(tenantId, vendedorId, since)
         : Promise.resolve(pullResponse([], timestamp)),
+      this.pullFormularios(tenantId),
+      this.pullSugerencias(tenantId, vendedorId),
     ]);
 
     return {
@@ -275,6 +307,8 @@ export class SyncService {
         politicas: politicas.data,
         config: config.data,
         mensajes: mensajes.data,
+        formularios: formularios.data,
+        sugerencias: sugerencias.data,
       },
       counts: {
         productos: productos.count,
@@ -286,6 +320,8 @@ export class SyncService {
         objetivos: objetivos.count,
         politicas: politicas.count,
         mensajes: mensajes.count,
+        formularios: formularios.count,
+        sugerencias: sugerencias.count,
       },
       serverTimestamp: timestamp.toISOString(),
     };

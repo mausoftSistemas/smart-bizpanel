@@ -12,6 +12,8 @@ services:
       PORT: 3000
       NODE_ENV: production
       CORS_ORIGIN: "*"
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -36,3 +38,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:
