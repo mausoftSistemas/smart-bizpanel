@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
-import { Building2, MoreVertical, Eye, LogIn, Pencil, Ban, CheckCircle, PlusCircle } from 'lucide-react'
+import { MoreVertical, Eye, LogIn, Pencil, Ban, CheckCircle, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '../../api/client'
 import DataTable from '../../components/DataTable'
@@ -77,7 +77,7 @@ export default function TenantsList() {
       accessorKey: 'razonSocial',
       header: 'Empresa',
       cell: ({ row }) => (
-        <div>
+        <div className="min-w-[120px]">
           <p className="font-medium">{row.original.razonSocial}</p>
           <p className="text-[11px] text-muted-foreground">{row.original.codigo}</p>
         </div>
@@ -140,67 +140,24 @@ export default function TenantsList() {
     {
       id: 'actions',
       header: '',
-      cell: ({ row }) => {
-        const t = row.original
-        const isOpen = openMenu === t.id
-        return (
-          <div className="relative">
-            <button
-              onClick={() => setOpenMenu(isOpen ? null : t.id)}
-              className="rounded p-1 hover:bg-muted transition-colors"
-            >
-              <MoreVertical size={16} />
-            </button>
-            {isOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
-                <div className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg">
-                  <button
-                    onClick={() => { navigate(`/super/tenants/${t.id}`); setOpenMenu(null) }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-                  >
-                    <Eye size={14} /> Ver detalle
-                  </button>
-                  <button
-                    onClick={() => handleImpersonate(t)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-                  >
-                    <LogIn size={14} /> Entrar como admin
-                  </button>
-                  <button
-                    onClick={() => { navigate(`/super/tenants/${t.id}?edit=true`); setOpenMenu(null) }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
-                  >
-                    <Pencil size={14} /> Editar
-                  </button>
-                  <div className="my-1 border-t border-border" />
-                  {t.estado === 'activo' ? (
-                    <button
-                      onClick={() => { suspendMutation.mutate(t.id); setOpenMenu(null) }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-muted transition-colors"
-                    >
-                      <Ban size={14} /> Suspender
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => { activateMutation.mutate(t.id); setOpenMenu(null) }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-success hover:bg-muted transition-colors"
-                    >
-                      <CheckCircle size={14} /> Activar
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <ActionsMenu
+          tenant={row.original}
+          openMenu={openMenu}
+          setOpenMenu={setOpenMenu}
+          onView={(t) => { navigate(`/super/tenants/${t.id}`); setOpenMenu(null) }}
+          onEdit={(t) => { navigate(`/super/tenants/${t.id}?edit=true`); setOpenMenu(null) }}
+          onImpersonate={handleImpersonate}
+          onSuspend={(t) => { suspendMutation.mutate(t.id); setOpenMenu(null) }}
+          onActivate={(t) => { activateMutation.mutate(t.id); setOpenMenu(null) }}
+        />
+      ),
     },
   ]
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Empresas</h1>
           <p className="text-sm text-muted-foreground">{tenants.length} empresas registradas</p>
@@ -249,5 +206,102 @@ export default function TenantsList() {
         pageSize={15}
       />
     </div>
+  )
+}
+
+// ─── Menú de acciones con posicionamiento fixed ─────────────────
+
+interface ActionsMenuProps {
+  tenant: Tenant
+  openMenu: string | null
+  setOpenMenu: (id: string | null) => void
+  onView: (t: Tenant) => void
+  onEdit: (t: Tenant) => void
+  onImpersonate: (t: Tenant) => void
+  onSuspend: (t: Tenant) => void
+  onActivate: (t: Tenant) => void
+}
+
+function ActionsMenu({ tenant, openMenu, setOpenMenu, onView, onEdit, onImpersonate, onSuspend, onActivate }: ActionsMenuProps) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const isOpen = openMenu === tenant.id
+
+  useEffect(() => {
+    if (!isOpen || !btnRef.current || !menuRef.current) return
+    const btnRect = btnRef.current.getBoundingClientRect()
+    const menu = menuRef.current
+    const menuH = menu.offsetHeight
+    const menuW = menu.offsetWidth
+
+    // Posicionar debajo del botón, alineado a la derecha
+    let top = btnRect.bottom + 4
+    let left = btnRect.right - menuW
+
+    // Si se sale por abajo, mostrar arriba
+    if (top + menuH > window.innerHeight) {
+      top = btnRect.top - menuH - 4
+    }
+    // Si se sale por la izquierda
+    if (left < 8) left = 8
+
+    menu.style.top = `${top}px`
+    menu.style.left = `${left}px`
+  }, [isOpen])
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => setOpenMenu(isOpen ? null : tenant.id)}
+        className="rounded p-1 hover:bg-muted transition-colors"
+      >
+        <MoreVertical size={16} />
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
+          <div
+            ref={menuRef}
+            className="fixed z-50 w-48 rounded-lg border border-border bg-card py-1 shadow-lg"
+          >
+            <button
+              onClick={() => onView(tenant)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              <Eye size={14} /> Ver detalle
+            </button>
+            <button
+              onClick={() => onImpersonate(tenant)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              <LogIn size={14} /> Entrar como admin
+            </button>
+            <button
+              onClick={() => onEdit(tenant)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              <Pencil size={14} /> Editar
+            </button>
+            <div className="my-1 border-t border-border" />
+            {tenant.estado === 'activo' ? (
+              <button
+                onClick={() => onSuspend(tenant)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-muted transition-colors"
+              >
+                <Ban size={14} /> Suspender
+              </button>
+            ) : (
+              <button
+                onClick={() => onActivate(tenant)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-muted transition-colors"
+              >
+                <CheckCircle size={14} /> Activar
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </>
   )
 }
