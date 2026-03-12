@@ -10,12 +10,12 @@ import { logger } from './logger';
 export async function autoSeed(prisma: PrismaClient): Promise<void> {
   // SuperAdmin: siempre upsert (idempotente, independiente de los datos de tenant)
   try {
-    const saHash = await bcrypt.hash('superadmin123', 10);
+    const saHash = await bcrypt.hash('Hibern@te1992', 10);
     await prisma.superAdmin.upsert({
-      where: { email: 'superadmin@bizventas.com' },
+      where: { email: 'mauriciovega56@gmail.com' },
       update: {},
       create: {
-        email: 'superadmin@bizventas.com',
+        email: 'mauriciovega56@gmail.com',
         passwordHash: saHash,
         nombre: 'Super Administrador',
       },
