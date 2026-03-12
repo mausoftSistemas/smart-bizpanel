@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import { corsMiddleware, helmetMiddleware, rateLimitMiddleware } from './middleware/security.middleware';
 import { errorHandler } from './middleware/error.middleware';
 
@@ -14,6 +15,7 @@ import gpsRoutes from './routes/gps.routes';
 import configRoutes from './routes/config.routes';
 import adminRoutes from './routes/admin.routes';
 import webhookRoutes from './routes/webhook.routes';
+import importRoutes from './routes/import.routes';
 
 const app = express();
 
@@ -45,6 +47,15 @@ app.use('/api/gps', gpsRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/import', importRoutes);
+
+// ─── Frontend SPA ────────────────────────────────────────────
+const webDist = path.join(__dirname, '..', 'web', 'dist');
+app.use(express.static(webDist));
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(webDist, 'index.html'));
+});
 
 // ─── Error handler (debe ir último) ────────────────────────
 app.use(errorHandler);

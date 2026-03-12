@@ -507,6 +507,24 @@ model Denominacion {
   updatedAt   DateTime @updatedAt
 }
 
+// ═══ IMPORT LOG ═══
+
+model ImportLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  userId      String
+  fileName    String
+  entityType  String   // productos, clientes, facturas, precios
+  totalRows   Int
+  imported    Int      @default(0)
+  updated     Int      @default(0)
+  skipped     Int      @default(0)
+  errors      Int      @default(0)
+  errorDetail Json?    // array de { row, error, data }
+  mapping     Json?    // mapping usado en la importación
+  createdAt   DateTime @default(now())
+}
+
 // ═══ SYNC LOG ═══
 
 model SyncLog {

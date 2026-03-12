@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { cleanupTempFiles } from '../services/import.service';
 
 const prisma = new PrismaClient();
 
@@ -58,8 +59,32 @@ export function startCleanupJob() {
       logger.error('Cleanup recalculate balances failed', err);
     }
 
+    // 4. Limpiar archivos temporales de importación (> 1 hora)
+    try {
+      cleanupTempFiles();
+    } catch (err) {
+      logger.error('Cleanup import temp files failed', err);
+    }
+
+    // 5. Borrar import logs > 90 días
+    try {
+      const importCutoff = new Date();
+      importCutoff.setDate(importCutoff.getDate() - 90);
+      const importResult = await prisma.importLog.deleteMany({ where: { createdAt: { lt: importCutoff } } });
+      if (importResult.count > 0) {
+        logger.info(`Cleanup: deleted ${importResult.count} old import logs`);
+      }
+    } catch (err) {
+      logger.error('Cleanup import logs failed', err);
+    }
+
     logger.info('Cleanup job: finished');
   });
 
-  logger.info('Cleanup job started (daily at 3 AM)');
+  // Limpiar archivos temporales de importación cada hora
+  cron.schedule('0 * * * *', () => {
+    cleanupTempFiles();
+  });
+
+  logger.info('Cleanup job started (daily at 3 AM + hourly import cleanup)');
 }
