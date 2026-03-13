@@ -869,4 +869,359 @@ router.post('/backup/tenants/:id/restore', restoreUpload.single('backup'), async
   }
 });
 
+// ══════════════════════════════════════════════════════════
+// ACTIVIDAD GLOBAL
+// ══════════════════════════════════════════════════════════
+
+router.get('/activity', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const [pedidosHoy, cobranzasHoy, jornadasActivas, loginsHoy] = await Promise.all([
+      prisma.pedido.count({ where: { createdAt: { gte: hoy } } }),
+      prisma.cobranza.count({ where: { createdAt: { gte: hoy } } }),
+      prisma.jornada.count({ where: { estado: 'activa' } }),
+      prisma.user.count({ where: { lastLogin: { gte: hoy } } }),
+    ]);
+
+    // Últimas 50 actividades mezclando pedidos, cobranzas y jornadas
+    const [pedidos, cobranzas, jornadas] = await Promise.all([
+      prisma.pedido.findMany({
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, total: true, createdAt: true, tenantId: true,
+          tenant: { select: { codigo: true, razonSocial: true } },
+          vendedor: { select: { nombre: true } },
+        },
+      }),
+      prisma.cobranza.findMany({
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, total: true, createdAt: true, tenantId: true,
+          tenant: { select: { codigo: true, razonSocial: true } },
+          vendedor: { select: { nombre: true } },
+        },
+      }),
+      prisma.jornada.findMany({
+        take: 20,
+        orderBy: { fecha: 'desc' },
+        select: {
+          id: true, estado: true, fecha: true, tenantId: true,
+          vendedor: { select: { nombre: true, tenant: { select: { codigo: true, razonSocial: true } } } },
+        },
+      }),
+    ]);
+
+    const actividades = [
+      ...pedidos.map((p) => ({
+        tipo: 'pedido' as const,
+        tenantCodigo: p.tenant.codigo,
+        tenantNombre: p.tenant.razonSocial,
+        usuario: p.vendedor.nombre,
+        detalle: `Pedido por $${p.total}`,
+        monto: p.total,
+        fecha: p.createdAt,
+      })),
+      ...cobranzas.map((c) => ({
+        tipo: 'cobranza' as const,
+        tenantCodigo: c.tenant.codigo,
+        tenantNombre: c.tenant.razonSocial,
+        usuario: c.vendedor.nombre,
+        detalle: `Cobranza por $${c.total}`,
+        monto: c.total,
+        fecha: c.createdAt,
+      })),
+      ...jornadas.map((j) => ({
+        tipo: 'jornada' as const,
+        tenantCodigo: j.vendedor.tenant.codigo,
+        tenantNombre: j.vendedor.tenant.razonSocial,
+        usuario: j.vendedor.nombre,
+        detalle: `Jornada ${j.estado}`,
+        monto: null,
+        fecha: j.fecha,
+      })),
+    ]
+      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+      .slice(0, 50);
+
+    successResponse(res, {
+      stats: { pedidosHoy, cobranzasHoy, jornadasActivas, loginsHoy },
+      actividades,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// SYNC STATUS GLOBAL
+// ══════════════════════════════════════════════════════════
+
+router.get('/sync', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [syncsHoy, erroresHoy] = await Promise.all([
+      prisma.syncLog.count({ where: { startedAt: { gte: hoy } } }),
+      prisma.syncLog.count({ where: { startedAt: { gte: hoy }, status: 'error' } }),
+    ]);
+
+    // Todos los tenants con su último sync y conteos
+    const tenants = await prisma.tenant.findMany({
+      select: {
+        id: true,
+        codigo: true,
+        razonSocial: true,
+        erpTipo: true,
+        estado: true,
+      },
+      orderBy: { razonSocial: 'asc' },
+    });
+
+    const tenantSyncs = await Promise.all(
+      tenants.map(async (t) => {
+        const [ultimoSync, syncsHoyTenant, erroresHoyTenant] = await Promise.all([
+          prisma.syncLog.findFirst({
+            where: { tenantId: t.id },
+            orderBy: { startedAt: 'desc' },
+            select: { startedAt: true, status: true, entityType: true },
+          }),
+          prisma.syncLog.count({ where: { tenantId: t.id, startedAt: { gte: hoy } } }),
+          prisma.syncLog.count({ where: { tenantId: t.id, startedAt: { gte: hoy }, status: 'error' } }),
+        ]);
+
+        const sinSync24h = !ultimoSync || ultimoSync.startedAt < hace24h;
+
+        return {
+          ...t,
+          ultimoSync: ultimoSync ? {
+            fecha: ultimoSync.startedAt,
+            status: ultimoSync.status,
+            entidad: ultimoSync.entityType,
+          } : null,
+          syncsHoy: syncsHoyTenant,
+          erroresHoy: erroresHoyTenant,
+          sinSync24h,
+        };
+      }),
+    );
+
+    const sinSync24hCount = tenantSyncs.filter((t) => t.sinSync24h && t.erpTipo !== 'standalone').length;
+
+    successResponse(res, {
+      stats: { syncsHoy, erroresHoy, sinSync24h: sinSync24hCount },
+      tenants: tenantSyncs,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════════════════
+
+router.get('/storage', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [totalStorage, totalProductos, totalClientes, totalPedidos] = await Promise.all([
+      prisma.tenant.aggregate({ _sum: { almacenamientoMb: true } }),
+      prisma.producto.count(),
+      prisma.cliente.count(),
+      prisma.pedido.count(),
+    ]);
+
+    const tenants = await prisma.tenant.findMany({
+      select: {
+        id: true,
+        codigo: true,
+        razonSocial: true,
+        cantidadProductos: true,
+        cantidadClientes: true,
+        cantidadPedidosMes: true,
+        almacenamientoMb: true,
+        estado: true,
+      },
+      orderBy: { almacenamientoMb: 'desc' },
+    });
+
+    successResponse(res, {
+      stats: {
+        totalAlmacenamientoMb: totalStorage._sum.almacenamientoMb || 0,
+        totalProductos,
+        totalClientes,
+        totalPedidos,
+      },
+      tenants,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// MI CUENTA (Super Admin)
+// ══════════════════════════════════════════════════════════
+
+router.put('/me', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.superAdmin!.superAdminId;
+    const { nombre, email, currentPassword, newPassword } = req.body;
+
+    const admin = await prisma.superAdmin.findUnique({ where: { id } });
+    if (!admin) throw new NotFoundError('Super Admin');
+
+    const data: Record<string, unknown> = {};
+    if (nombre !== undefined) data.nombre = nombre;
+    if (email !== undefined) {
+      const dup = await prisma.superAdmin.findUnique({ where: { email } });
+      if (dup && dup.id !== id) throw new ValidationError('Ya existe otro super admin con ese email');
+      data.email = email;
+    }
+
+    if (newPassword) {
+      if (!currentPassword) throw new ValidationError('Se requiere la contraseña actual');
+      const valid = await bcrypt.compare(currentPassword, admin.passwordHash);
+      if (!valid) throw new ValidationError('La contraseña actual es incorrecta');
+      if (newPassword.length < 6) throw new ValidationError('La nueva contraseña debe tener al menos 6 caracteres');
+      data.passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updated = await prisma.superAdmin.update({
+      where: { id },
+      data,
+      select: { id: true, email: true, nombre: true, createdAt: true, lastLogin: true },
+    });
+
+    successResponse(res, updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// LOGS DEL SISTEMA
+// ══════════════════════════════════════════════════════════
+
+router.get('/logs', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const tipo = (req.query.tipo as string) || 'all';
+
+    const offset = (page - 1) * limit;
+
+    // Mapa tenantId → codigo para lookup
+    const tenantsList = await prisma.tenant.findMany({ select: { id: true, codigo: true } });
+    const tenantMap = new Map(tenantsList.map((t) => [t.id, t.codigo]));
+
+    type LogItem = {
+      id: string;
+      tipo: string;
+      tenantId: string;
+      tenantCodigo: string;
+      entidad: string;
+      registros: number;
+      estado: string;
+      fecha: Date;
+    };
+
+    const items: LogItem[] = [];
+    let totalCount = 0;
+
+    // SyncLogs
+    if (tipo === 'all' || tipo === 'sync') {
+      const [syncLogs, syncCount] = await Promise.all([
+        prisma.syncLog.findMany({
+          take: limit,
+          skip: tipo !== 'all' ? offset : 0,
+          orderBy: { startedAt: 'desc' },
+        }),
+        prisma.syncLog.count(),
+      ]);
+      items.push(
+        ...syncLogs.map((s) => ({
+          id: String(s.id),
+          tipo: 'sync',
+          tenantId: s.tenantId,
+          tenantCodigo: tenantMap.get(s.tenantId) || s.tenantId,
+          entidad: `${s.direction}:${s.entityType}`,
+          registros: s.recordCount,
+          estado: s.status,
+          fecha: s.startedAt,
+        })),
+      );
+      totalCount += syncCount;
+    }
+
+    // ImportLogs
+    if (tipo === 'all' || tipo === 'import') {
+      const [importLogs, importCount] = await Promise.all([
+        prisma.importLog.findMany({
+          take: limit,
+          skip: tipo !== 'all' ? offset : 0,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.importLog.count(),
+      ]);
+      items.push(
+        ...importLogs.map((i) => ({
+          id: i.id,
+          tipo: 'import',
+          tenantId: i.tenantId,
+          tenantCodigo: tenantMap.get(i.tenantId) || i.tenantId,
+          entidad: i.entityType,
+          registros: i.imported + i.updated,
+          estado: i.errors > 0 ? 'error' : 'ok',
+          fecha: i.createdAt,
+        })),
+      );
+      totalCount += importCount;
+    }
+
+    // IntercambioLogs
+    if (tipo === 'all' || tipo === 'intercambio') {
+      const [intercambioLogs, intercambioCount] = await Promise.all([
+        prisma.intercambioLog.findMany({
+          take: limit,
+          skip: tipo !== 'all' ? offset : 0,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.intercambioLog.count(),
+      ]);
+      items.push(
+        ...intercambioLogs.map((l) => ({
+          id: l.id,
+          tipo: 'intercambio',
+          tenantId: l.tenantId,
+          tenantCodigo: tenantMap.get(l.tenantId) || l.tenantId,
+          entidad: l.direccion,
+          registros: Array.isArray(l.archivos) ? (l.archivos as Array<{ registros?: number }>).reduce((acc, a) => acc + (a.registros || 0), 0) : 0,
+          estado: l.estado,
+          fecha: l.createdAt,
+        })),
+      );
+      totalCount += intercambioCount;
+    }
+
+    // Ordenar por fecha y paginar si es "all"
+    items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+    const paginatedItems = tipo === 'all' ? items.slice(offset, offset + limit) : items;
+    const totalPages = Math.ceil(totalCount / limit);
+
+    successResponse(res, {
+      items: paginatedItems,
+      pagination: { total: totalCount, page, limit, totalPages },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

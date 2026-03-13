@@ -57,6 +57,11 @@ import TenantDetail from './pages/super/TenantDetail'
 import Billing from './pages/super/Billing'
 import SuperAdminsList from './pages/super/SuperAdminsList'
 import Backup from './pages/super/Backup'
+import Activity from './pages/super/Activity'
+import SyncStatusGlobal from './pages/super/SyncStatusGlobal'
+import Storage from './pages/super/Storage'
+import Account from './pages/super/Account'
+import SystemLogs from './pages/super/SystemLogs'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -94,12 +99,11 @@ export default function App() {
           <Route path="billing" element={<Billing />} />
           <Route path="admins" element={<SuperAdminsList />} />
           <Route path="backup" element={<Backup />} />
-          {/* Placeholder pages para links futuros */}
-          <Route path="activity" element={<PlaceholderPage title="Actividad Global" />} />
-          <Route path="sync" element={<PlaceholderPage title="Sync Status Global" />} />
-          <Route path="storage" element={<PlaceholderPage title="Almacenamiento" />} />
-          <Route path="account" element={<PlaceholderPage title="Mi Cuenta" />} />
-          <Route path="logs" element={<PlaceholderPage title="Logs del Sistema" />} />
+          <Route path="activity" element={<Activity />} />
+          <Route path="sync" element={<SyncStatusGlobal />} />
+          <Route path="storage" element={<Storage />} />
+          <Route path="account" element={<Account />} />
+          <Route path="logs" element={<SystemLogs />} />
         </Route>
 
         {/* Operador ERP: solo panel simplificado */}
@@ -188,11 +192,3 @@ export default function App() {
   )
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="flex h-64 flex-col items-center justify-center text-center">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Próximamente</p>
-    </div>
-  )
-}
