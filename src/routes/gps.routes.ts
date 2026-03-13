@@ -2,13 +2,14 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
+import { requireModule } from '../middleware/features.middleware';
 import { successResponse } from '../utils/helpers';
 import { ValidationError } from '../utils/errors';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-router.use(authMiddleware, tenantMiddleware);
+router.use(authMiddleware, tenantMiddleware, requireModule('gps'));
 
 router.post('/batch', async (req: Request, res: Response, next: NextFunction) => {
   try {

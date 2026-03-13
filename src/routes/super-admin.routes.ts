@@ -2,11 +2,15 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { env } from '../config/env';
 import { superAdminMiddleware } from '../middleware/super-admin.middleware';
 import { successResponse } from '../utils/helpers';
 import { ValidationError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import { JwtPayload } from '../middleware/auth.middleware';
+import multer from 'multer';
+import { generateTenantBackup, getBackupDir, restoreTenantBackup } from '../services/backup.service';
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -731,6 +735,135 @@ router.get('/billing', async (_req: Request, res: Response, next: NextFunction) 
       empresasMorosas: morosos.length,
       empresasConPlanVencido: vencidos.length,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// BACKUP
+// ══════════════════════════════════════════════════════════
+
+// ─── GET /api/super/backup/tenants ─────────────────────
+
+router.get('/backup/tenants', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenants = await prisma.tenant.findMany({
+      select: {
+        id: true,
+        codigo: true,
+        razonSocial: true,
+        plan: true,
+        estado: true,
+        ultimaActividad: true,
+      },
+      orderBy: { razonSocial: 'asc' },
+    });
+
+    const backupDir = getBackupDir();
+    const result = tenants.map((t) => {
+      let ultimoBackup: { fecha: string; tamaño: number; fileName: string } | null = null;
+
+      if (fs.existsSync(backupDir)) {
+        const files = fs.readdirSync(backupDir)
+          .filter((f) => f.startsWith(`backup_${t.codigo}_`) && f.endsWith('.zip'))
+          .sort()
+          .reverse();
+
+        if (files.length > 0) {
+          const stat = fs.statSync(path.join(backupDir, files[0]));
+          ultimoBackup = {
+            fecha: stat.mtime.toISOString(),
+            tamaño: Math.round(stat.size / 1024),
+            fileName: files[0],
+          };
+        }
+      }
+
+      return { ...t, ultimoBackup };
+    });
+
+    successResponse(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/super/backup/tenants/:id/generate ──────
+
+router.post('/backup/tenants/:id/generate', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.params.id as string;
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundError('Empresa');
+
+    const { filePath, fileName } = await generateTenantBackup(tenantId);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', 'application/zip');
+
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /api/super/backup/tenants/:id/download/:fileName
+
+router.get('/backup/tenants/:id/download/:fileName', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.params.id as string;
+    const fileName = req.params.fileName as string;
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundError('Empresa');
+
+    // Validate filename to prevent path traversal
+    if (!fileName.startsWith(`backup_${tenant.codigo}_`) || !fileName.endsWith('.zip') || fileName.includes('..')) {
+      throw new ValidationError('Nombre de archivo inválido');
+    }
+
+    const filePath = path.join(getBackupDir(), fileName);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundError('Archivo de backup');
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', 'application/zip');
+
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/super/backup/tenants/:id/restore ──────
+
+const restoreUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/zip' || file.originalname.toLowerCase().endsWith('.zip')) {
+      cb(null, true);
+    } else {
+      cb(new ValidationError('Solo se permiten archivos ZIP') as unknown as Error);
+    }
+  },
+});
+
+router.post('/backup/tenants/:id/restore', restoreUpload.single('backup'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.params.id as string;
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundError('Empresa');
+
+    if (!req.file) throw new ValidationError('Se requiere un archivo ZIP de backup');
+
+    const result = await restoreTenantBackup(req.file.buffer, tenantId);
+
+    successResponse(res, result);
   } catch (err) {
     next(err);
   }

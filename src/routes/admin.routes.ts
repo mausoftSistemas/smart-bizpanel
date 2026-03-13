@@ -161,9 +161,17 @@ router.post('/users', async (req: Request, res: Response, next: NextFunction) =>
     const { nombre, email, password, rol } = req.body;
     if (!nombre || !email || !password) throw new ValidationError('nombre, email y password son requeridos');
 
+    const effectiveRol = rol || 'vendedor';
+    if (effectiveRol === 'vendedor' && req.tenant) {
+      const count = await prisma.user.count({ where: { tenantId: req.tenantId!, rol: 'vendedor', activo: true } });
+      if (count >= req.tenant.maxVendedores) {
+        throw new ValidationError(`Límite de vendedores alcanzado (${req.tenant.maxVendedores}). Actualizá tu plan para agregar más.`);
+      }
+    }
+
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { tenantId: req.tenantId!, nombre, email, passwordHash: hashed, rol: rol || 'vendedor' },
+      data: { tenantId: req.tenantId!, nombre, email, passwordHash: hashed, rol: effectiveRol },
       select: { id: true, nombre: true, email: true, rol: true },
     });
     successResponse(res, user, 201);
@@ -178,9 +186,17 @@ router.post('/usuarios', async (req: Request, res: Response, next: NextFunction)
     const { nombre, email, password, rol } = req.body;
     if (!nombre || !email || !password) throw new ValidationError('nombre, email y password son requeridos');
 
+    const effectiveRol = rol || 'vendedor';
+    if (effectiveRol === 'vendedor' && req.tenant) {
+      const count = await prisma.user.count({ where: { tenantId: req.tenantId!, rol: 'vendedor', activo: true } });
+      if (count >= req.tenant.maxVendedores) {
+        throw new ValidationError(`Límite de vendedores alcanzado (${req.tenant.maxVendedores}). Actualizá tu plan para agregar más.`);
+      }
+    }
+
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { tenantId: req.tenantId!, nombre, email, passwordHash: hashed, rol: rol || 'vendedor' },
+      data: { tenantId: req.tenantId!, nombre, email, passwordHash: hashed, rol: effectiveRol },
       select: { id: true, nombre: true, email: true, rol: true },
     });
     successResponse(res, user, 201);
@@ -198,6 +214,14 @@ router.put('/users/:id', async (req: Request, res: Response, next: NextFunction)
     // Verificar que el user pertenece al tenant
     const existing = await prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!existing) throw new NotFoundError('Usuario');
+
+    // Si se cambia rol a vendedor (y antes no lo era), validar límite
+    if (rol === 'vendedor' && existing.rol !== 'vendedor' && req.tenant) {
+      const count = await prisma.user.count({ where: { tenantId, rol: 'vendedor', activo: true } });
+      if (count >= req.tenant.maxVendedores) {
+        throw new ValidationError(`Límite de vendedores alcanzado (${req.tenant.maxVendedores}). Actualizá tu plan para agregar más.`);
+      }
+    }
 
     const user = await prisma.user.update({
       where: { id: userId },

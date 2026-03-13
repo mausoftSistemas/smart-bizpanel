@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { UnauthorizedError } from '../utils/errors';
+import type { Tenant } from '@prisma/client';
 
 export interface JwtPayload {
   id: string;
@@ -16,6 +17,7 @@ declare global {
     interface Request {
       user?: JwtPayload;
       tenantId?: string;
+      tenant?: Tenant;
     }
   }
 }

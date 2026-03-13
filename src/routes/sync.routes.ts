@@ -7,6 +7,7 @@ import { SyncService } from '../services/sync.service';
 import { SyncPushService } from '../services/sync-push.service';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
+import { requireModule } from '../middleware/features.middleware';
 import { ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
@@ -371,7 +372,7 @@ router.post('/push/fotos', fileUpload.array('fotos', 20), async (req: Request, r
 
 // ─── PUSH: Firmas (multipart) ───────────────────────────────
 // POST /api/sync/push/firmas
-router.post('/push/firmas', fileUpload.array('firmas', 10), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/push/firmas', requireModule('firma'), fileUpload.array('firmas', 10), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) throw new ValidationError('No se recibieron archivos');

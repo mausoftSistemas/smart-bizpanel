@@ -56,6 +56,7 @@ import TenantCreate from './pages/super/TenantCreate'
 import TenantDetail from './pages/super/TenantDetail'
 import Billing from './pages/super/Billing'
 import SuperAdminsList from './pages/super/SuperAdminsList'
+import Backup from './pages/super/Backup'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="tenants/:id" element={<TenantDetail />} />
           <Route path="billing" element={<Billing />} />
           <Route path="admins" element={<SuperAdminsList />} />
+          <Route path="backup" element={<Backup />} />
           {/* Placeholder pages para links futuros */}
           <Route path="activity" element={<PlaceholderPage title="Actividad Global" />} />
           <Route path="sync" element={<PlaceholderPage title="Sync Status Global" />} />
